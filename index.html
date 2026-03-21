@@ -680,20 +680,7 @@
 
                 setBooking(true);
 
-                // FIX: Chequear límite de reservas por teléfono (máx 2 turnos futuros)
-                const today = getTodayStr();
-                const existingSnap = await db.collection("appointments")
-                    .where("profId", "==", profId)
-                    .where("phone", "==", phoneClean)
-                    .where("date", ">=", today)
-                    .get();
-                if (existingSnap.size >= 2) {
-                    alert('Ya tenés 2 turnos reservados. Cancelá uno antes de reservar otro.');
-                    setBooking(false);
-                    return;
-                }
-
-                // FIX: ID determinístico para poder hacer la transacción atómica
+                // ID determinístico para poder hacer la transacción atómica
                 const slotId = `${profId}_${selectedDate}_${selectedTime.replace(':', '-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
 
