@@ -21,6 +21,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        @keyframes renewPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(245,158,11,0.55); } 50%{ box-shadow:0 0 0 8px rgba(245,158,11,0); } }
         .fade-in { animation: fadeIn 0.4s ease-out; }
         .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -145,7 +146,11 @@
     const DAYS = [{id:1,name:'Lun'},{id:2,name:'Mar'},{id:3,name:'Mie'},{id:4,name:'Jue'},{id:5,name:'Vie'},{id:6,name:'Sab'},{id:0,name:'Dom'}];
     const DEFAULT_WA_TEMPLATE = 'Hola {cliente}! Te confirmamos tu turno para el {fecha} a las {hora}hs en {negocio}. Te esperamos!';
     const buildWAMsg = (template, apt, businessName) =>
-        (template || DEFAULT_WA_TEMPLATE).replace('{cliente}', apt.client).replace('{fecha}', formatDate(apt.date)).replace('{hora}', apt.time).replace('{negocio}', businessName);
+        (template || DEFAULT_WA_TEMPLATE)
+            .replaceAll('{cliente}', apt.client)
+            .replaceAll('{fecha}', formatDate(apt.date))
+            .replaceAll('{hora}', apt.time)
+            .replaceAll('{negocio}', businessName);
 
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) return false;
@@ -684,6 +689,7 @@
         const [saving, setSaving] = useState(false);
 
         const prevAptIds  = useRef(new Set()); const initialized = useRef(false);
+        const allAptsRef  = useRef([]);
 
         useEffect(() => {
             if (user && !user.isAnonymous) {
@@ -716,6 +722,7 @@
                             return false;
                         };
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        allAptsRef.current = all;
                         const newList = all.filter(a => !isPast(a)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
                         const pastList = all.filter(a => isPast(a)).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
                         setApts(newList); setPastApts(pastList);
@@ -730,7 +737,22 @@
                 );
             };
             subscribeApts();
-            return () => { active = false; try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
+            // Recalcular próximos/pasados cada minuto sin esperar nuevo snapshot
+            const minuteTimer = setInterval(() => {
+                if (!active || allAptsRef.current.length === 0) return;
+                const today = getTodayStr();
+                const now = new Date();
+                const nowMins = now.getHours() * 60 + now.getMinutes();
+                const isPastNow = (a) => {
+                    if (a.date < today) return true;
+                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) < nowMins; }
+                    return false;
+                };
+                const all = allAptsRef.current;
+                setApts(all.filter(a => !isPastNow(a)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
+                setPastApts(all.filter(a => isPastNow(a)).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
+            }, 60000);
+            return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
         }, [user]);
 
         useEffect(() => {
@@ -801,7 +823,6 @@
                                 Licencia activa: {daysLeft} días restantes
                             </div>
                             {/* BOTON DE RENOVACION ANTICIPADA */}
-                            <style>{`@keyframes renewPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(245,158,11,0.55); } 50%{ box-shadow:0 0 0 8px rgba(245,158,11,0); } }`}</style>
                             <button onClick={() => setShowRenewModal(true)} style={{background:'linear-gradient(135deg,#f59e0b,#ef4444)',animation:'renewPulse 2s ease-in-out infinite'}} className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95">
                                 🔥 Renovar ahora
                             </button>
@@ -941,6 +962,7 @@
         const [phoneLocal, setPhoneLocal]   = useState('');
         const [phonePrefix, setPhonePrefix] = useState('54');
         const [profExpired, setProfExpired] = useState(false);
+        const [loadingSlots, setLoadingSlots] = useState(false);
 
         useEffect(() => {
             db.collection("professionals").doc(profId).get().then(d => {
@@ -962,9 +984,10 @@
             if (selectedDate && profId) {
                 setSelectedTime('');
                 setBookedTimes([]);
+                setLoadingSlots(true);
                 db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
-                    .then(snap => setBookedTimes(snap.docs.map(d => d.data().time)))
-                    .catch(() => { setBookedTimes([]); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
+                    .then(snap => { setBookedTimes(snap.docs.map(d => d.data().time)); setLoadingSlots(false); })
+                    .catch(() => { setBookedTimes([]); setLoadingSlots(false); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
             }
         }, [selectedDate, profId]);
 
@@ -1059,6 +1082,10 @@
                         {selectedDate && (
                             isDayUnavailable ? (
                                 <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">&#128683; Este día no está disponible.</div>
+                            ) : loadingSlots ? (
+                                <div className="text-center py-5 text-sm text-neutral-400 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...
+                                </div>
                             ) : availableSlots.length === 0 ? (
                                 <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">&#128549; No quedan turnos disponibles para este día.</div>
                             ) : (
