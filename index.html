@@ -93,8 +93,8 @@
         if (!toast) return null;
         const bg = toast.type === 'error' ? 'bg-red-600' : 'bg-neutral-900';
         return (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] slide-up">
-                <div className={`px-6 py-3 rounded-2xl shadow-2xl text-sm font-bold text-white flex items-center gap-2 ${bg} border border-white/20`}>
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] slide-up w-11/12 max-w-sm">
+                <div className={`px-6 py-3 rounded-2xl shadow-2xl text-sm font-bold text-white flex items-center gap-2 ${bg} border border-white/20 w-full`}>
                     {toast.type === 'error' ? '❌' : '✅'} {toast.message}
                 </div>
             </div>
@@ -802,8 +802,6 @@
                 if (!currentUid) {
                     const cred = await auth.signInAnonymously();
                     currentUid = cred.user.uid;
-                    // Pausa de medio segundo para asegurar que Firebase sincronizó el usuario
-                    await new Promise(r => setTimeout(r, 500)); 
                 }
                 
                 const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
@@ -813,13 +811,14 @@
                 const slotDoc = await slotRef.get(); 
                 if (slotDoc.exists) throw new Error("Ese horario ya fue reservado por otra persona.");
                 
+                // NOTA: Acá está el parche de seguridad para el input "notas" opcional
                 await slotRef.set({ 
                     profId, 
                     date: selectedDate, 
                     time: selectedTime, 
                     client: e.target.clientName.value, 
                     phone: '54'+phoneLocal, 
-                    notes: e.target.notes.value||'', 
+                    notes: e.target.notes?.value || '', 
                     clientUid: currentUid,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
@@ -827,7 +826,6 @@
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
             } catch (err) { 
                 console.error(err); 
-                // MOSTRAMOS EL MENSAJE DE ERROR EXACTO
                 const errorMsg = err.code === 'permission-denied' ? 'Error de permisos de Firebase.' : err.message;
                 setToast({ type:'error', message: errorMsg }); 
             } finally { setBooking(false); }
@@ -893,6 +891,7 @@
                         <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none' : ''}`}>
                             <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
                             <input name="phoneLocal" type="tel" value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp (sin 0 ni 15)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
+                            <input name="notes" placeholder="Alguna nota o comentario (opcional)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" />
                             <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
                                 {booking ? 'Reservando...' : 'Confirmar Reserva'}
                             </button>
