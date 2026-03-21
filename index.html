@@ -244,10 +244,8 @@
                     setMode('login'); setLoading(false); return;
                 }
                 if (mode === 'login') {
-                    // Aquí se aplica el estado de la casilla "Recordar sesión"
                     const persistence = e.target.remember?.checked ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
                     await auth.setPersistence(persistence);
-                    
                     await auth.signInWithEmailAndPassword(e.target.email.value, e.target.password.value);
                     setToast({ type:'success', message: 'Sesión iniciada' });
                 } else {
@@ -288,7 +286,7 @@
                             {mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Registro gratis (30 días)' : 'Recuperar contraseña'}
                         </h2>
                         <p className="text-neutral-500 mb-6 text-sm">
-                            {mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Creá tu cuenta y probá todas las funciones.' : 'Te enviamos un link a tu correo.(Revisa la bandeja de spam)'}
+                            {mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Creá tu cuenta y probá todas las funciones.' : 'Te enviamos un link a tu correo.'}
                         </p>
                         
                         <form onSubmit={handleSubmit} className="space-y-4">
@@ -323,7 +321,6 @@
                                 </div>
                             )}
 
-                            {/* ESTA ES LA CASILLA DE RECORDAR SESIÓN RESTAURADA */}
                             {mode === 'login' && (
                                 <div className="flex items-center justify-between">
                                     <label className="flex items-center gap-2 cursor-pointer text-sm text-neutral-600">
@@ -339,7 +336,7 @@
                         </form>
                         
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis </button>}
+                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
                             {mode === 'login' && <button onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
                             {mode !== 'login' && <button onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
@@ -800,9 +797,17 @@
         const handleBooking = async (e) => {
             e.preventDefault(); if (!selectedTime) return;
             setBooking(true);
-            try { if (!auth.currentUser) await auth.signInAnonymously();
+            try { 
+                // PARCHE DE SEGURIDAD: Nos aseguramos de tener el UID ANTES de guardar el turno
+                let currentUid = auth.currentUser?.uid;
+                if (!currentUid) {
+                    const cred = await auth.signInAnonymously();
+                    currentUid = cred.user.uid;
+                }
+                
                 const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
+                
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef); if (slotDoc.exists) throw new Error("SLOT_TAKEN");
                     tx.set(slotRef, { 
@@ -812,12 +817,15 @@
                         client: e.target.clientName.value, 
                         phone: '54'+phoneLocal, 
                         notes: e.target.notes.value||'', 
-                        clientUid: auth.currentUser.uid, // Parche de seguridad
+                        clientUid: currentUid, 
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 });
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
-            } catch (err) { setToast({ type:'error', message:'El turno fue tomado o hubo un error.' }); } finally { setBooking(false); }
+            } catch (err) { 
+                console.error(err);
+                setToast({ type:'error', message:'El turno fue tomado o hubo un error.' }); 
+            } finally { setBooking(false); }
         };
 
         if (profExpired) return (
