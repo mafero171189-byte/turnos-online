@@ -339,7 +339,7 @@
                         </form>
                         
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
+                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis </button>}
                             {mode === 'login' && <button onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
                             {mode !== 'login' && <button onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
