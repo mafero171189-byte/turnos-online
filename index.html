@@ -91,7 +91,7 @@
     const Toast = ({ toast, onClose }) => {
         useEffect(() => {
             if (toast) { const timer = setTimeout(onClose, 3000); return () => clearTimeout(timer); }
-        }, [toast, onClose]);
+        }, [toast]); // eslint-disable-line react-hooks/exhaustive-deps
         if (!toast) return null;
         const bg = toast.type === 'error' ? 'bg-red-600' : 'bg-neutral-900';
         return (
@@ -204,15 +204,23 @@
     }
 
     const CustomDialog = ({ dialog, onClose }) => {
+        const [confirming, setConfirming] = useState(false);
         if (!dialog) return null;
+        const handleConfirm = async () => {
+            if (confirming) return;
+            setConfirming(true);
+            if (dialog.onConfirm) await dialog.onConfirm();
+            setConfirming(false);
+            onClose();
+        };
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm fade-in p-4">
                 <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-neutral-100">
                     <h3 className="text-xl font-bold mb-2 text-neutral-900">{dialog.title}</h3>
                     <p className="text-neutral-600 mb-6 text-sm leading-relaxed">{dialog.message}</p>
                     <div className="flex justify-end gap-3">
-                        {dialog.type === 'confirm' && (<button onClick={onClose} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>)}
-                        <button onClick={async () => { if(dialog.onConfirm) await dialog.onConfirm(); onClose(); }} className="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition active:scale-95 text-sm">{dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}</button>
+                        {dialog.type === 'confirm' && (<button onClick={onClose} disabled={confirming} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>)}
+                        <button onClick={handleConfirm} disabled={confirming} className={`px-5 py-2.5 text-white font-medium rounded-xl transition text-sm ${confirming ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 active:scale-95'}`}>{confirming ? 'Procesando...' : dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}</button>
                     </div>
                 </div>
             </div>
@@ -286,18 +294,23 @@
                     const res = await auth.createUserWithEmailAndPassword(e.target.email.value, e.target.password.value);
                     const expirationDate = new Date();
                     expirationDate.setDate(expirationDate.getDate() + 30);
-
-                    await db.collection("professionals").doc(res.user.uid).set({
-                        name: e.target.name.value, business: e.target.business.value,
-                        service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
-                        waTemplate: DEFAULT_WA_TEMPLATE,
-                        licenseExpiresAt: expirationDate.toISOString(),
-                        subscriptionStatus: 'trial', 
-                        isSuspended: false,
-                        themeColor: '#4f46e5', logoBase64: '',
-                        config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, blockedDates:[] }
-                    });
-                    setToast({ type:'success', message: 'Cuenta creada con éxito' });
+                    try {
+                        await db.collection("professionals").doc(res.user.uid).set({
+                            name: e.target.name.value, business: e.target.business.value,
+                            service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
+                            waTemplate: DEFAULT_WA_TEMPLATE,
+                            licenseExpiresAt: expirationDate.toISOString(),
+                            subscriptionStatus: 'trial', 
+                            isSuspended: false,
+                            themeColor: '#4f46e5', logoBase64: '',
+                            config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, blockedDates:[] }
+                        });
+                        setToast({ type:'success', message: 'Cuenta creada con éxito' });
+                    } catch(dbErr) {
+                        // Si falla Firestore, borrar el usuario de Auth para no dejar un estado inconsistente
+                        await res.user.delete().catch(() => {});
+                        throw dbErr;
+                    }
                 }
             } catch (err) {
                 const msgs = { 'auth/user-not-found':'Cuenta no encontrada.', 'auth/wrong-password':'Contraseña incorrecta.', 'auth/invalid-credential':'Email o contraseña incorrectos.', 'auth/email-already-in-use':'Correo ya registrado.', 'auth/weak-password':'La contraseña debe tener al menos 6 caracteres.', 'auth/invalid-email':'El formato del email no es válido.' };
@@ -800,7 +813,7 @@
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Tu link de reservas</label>
                             <div className="flex items-center gap-2 bg-neutral-50 border rounded-xl p-1 px-3">
                                 <input type="text" readOnly value={shareUrl} className="flex-1 bg-transparent text-xs py-1.5 outline-none text-neutral-700 w-0" />
-                                <button onClick={() => {navigator.clipboard.writeText(shareUrl); setToast({type:'success', message:'¡Link copiado!'});}} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
+                                <button onClick={() => { navigator.clipboard.writeText(shareUrl).then(() => setToast({type:'success', message:'¡Link copiado!'})).catch(() => setToast({type:'error', message:'No se pudo copiar. Copialo manualmente.'})); }} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
                             </div>
                         </div>
                     </div>
