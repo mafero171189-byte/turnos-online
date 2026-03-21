@@ -233,7 +233,7 @@
             const unsub = auth.onAuthStateChanged(async (u) => {
                 setUser(u);
                 if (p) { 
-                    setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(console.error); 
+                    setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(() => {}); 
                 } else if (u && !u.isAnonymous) { 
                     try {
                         const adminDoc = await db.collection("admins").doc(u.uid).get();
@@ -300,7 +300,7 @@
                     setToast({ type:'success', message: 'Cuenta creada con éxito' });
                 }
             } catch (err) {
-                const msgs = { 'auth/user-not-found':'Cuenta no encontrada.', 'auth/wrong-password':'Contraseña incorrecta.', 'auth/email-already-in-use':'Correo ya registrado.' };
+                const msgs = { 'auth/user-not-found':'Cuenta no encontrada.', 'auth/wrong-password':'Contraseña incorrecta.', 'auth/invalid-credential':'Email o contraseña incorrectos.', 'auth/email-already-in-use':'Correo ya registrado.', 'auth/weak-password':'La contraseña debe tener al menos 6 caracteres.', 'auth/invalid-email':'El formato del email no es válido.' };
                 setToast({ type:'error', message: msgs[err.code] || 'Ocurrió un error.' });
             } finally { setLoading(false); }
         };
@@ -388,18 +388,21 @@
         const [loading, setLoading] = useState(true);
 
         useEffect(() => {
-            const unsubProfs = db.collection("professionals").onSnapshot(snap => {
-                setProfs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setLoading(false);
-            });
-            const unsubSettings = db.collection("settings").doc("payment").onSnapshot(doc => {
-                if(doc.exists) {
-                    const data = doc.data();
-                    setSettings(data);
-                    setMpPriceInput(data.mpPrice || '5000');
-                    setPaypalPriceInput(data.paypalPrice || '15');
-                }
-            });
+            const unsubProfs = db.collection("professionals").onSnapshot(
+                snap => { setProfs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); },
+                err => { console.warn('onSnapshot profs error:', err); setLoading(false); }
+            );
+            const unsubSettings = db.collection("settings").doc("payment").onSnapshot(
+                doc => {
+                    if(doc.exists) {
+                        const data = doc.data();
+                        setSettings(data);
+                        setMpPriceInput(data.mpPrice || '5000');
+                        setPaypalPriceInput(data.paypalPrice || '15');
+                    }
+                },
+                err => { console.warn('onSnapshot settings error:', err); }
+            );
             return () => { unsubProfs(); unsubSettings(); };
         }, []);
 
@@ -450,7 +453,8 @@
                 onConfirm: async () => {
                     try {
                         await db.collection("professionals").doc(prof.id).update({ isSuspended: !prof.isSuspended });
-                        setToast({ type:'success', message: `Cuenta ${action.toLowerCase()}a correctamente.` });
+                        const pastTense = prof.isSuspended ? 'reactivada' : 'suspendida';
+                        setToast({ type:'success', message: `Cuenta ${pastTense} correctamente.` });
                     } catch(err) { setToast({ type:'error', message: `Error al ${action.toLowerCase()} la cuenta.` }); }
                 }
             });
@@ -943,10 +947,11 @@
 
         useEffect(() => {
             if (selectedDate && profId) {
+                setSelectedTime('');
+                setBookedTimes([]);
                 db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
                     .then(snap => setBookedTimes(snap.docs.map(d => d.data().time)))
                     .catch(() => { setBookedTimes([]); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
-                setSelectedTime('');
             }
         }, [selectedDate, profId]);
 
@@ -1017,7 +1022,7 @@
         if (selectedDate) {
             const isWork = prof.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
             if (isWork) availableSlots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
-            else { isDayUnavailable = true; if (selectedTime) setSelectedTime(''); }
+            else isDayUnavailable = true;
             if (selectedDate === today) { const nowMins = new Date().getHours()*60 + new Date().getMinutes(); availableSlots = availableSlots.filter(t => (Number(t.split(':')[0])*60+Number(t.split(':')[1])) > nowMins); }
         }
 
@@ -1082,8 +1087,15 @@
                 const today    = getTodayStr();
                 const fullPhone = buildPhone(searchPrefix, localClean);
                 const snap = await db.collection("appointments").where("profId","==",profId).get();
+                const now = new Date();
+                const nowMins = now.getHours() * 60 + now.getMinutes();
+                const isFuture = (a) => {
+                    if (a.date > today) return true;
+                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) > nowMins; }
+                    return false;
+                };
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .filter(a => (a.phone === fullPhone || a.phone === localClean) && a.date >= today)
+                    .filter(a => (a.phone === fullPhone || a.phone === localClean) && isFuture(a))
                     .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
                 setMyApts(list);
             } catch (err) { setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { setSearching(false); }
