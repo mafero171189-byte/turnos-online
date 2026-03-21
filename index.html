@@ -686,10 +686,21 @@
                 if (!active) return;
                 unsubApts = db.collection("appointments").where("profId","==",user.uid).onSnapshot(
                     (snap) => {
-                        if (!active) return; const today = getTodayStr();
+                        if (!active) return;
+                        const today = getTodayStr();
+                        const now = new Date();
+                        const nowMins = now.getHours() * 60 + now.getMinutes();
+                        const isPast = (a) => {
+                            if (a.date < today) return true;
+                            if (a.date === today) {
+                                const [h, m] = a.time.split(':').map(Number);
+                                return (h * 60 + m) < nowMins;
+                            }
+                            return false;
+                        };
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        const newList = all.filter(a => a.date >= today).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-                        const pastList = all.filter(a => a.date < today).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                        const newList = all.filter(a => !isPast(a)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+                        const pastList = all.filter(a => isPast(a)).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
                         setApts(newList); setPastApts(pastList);
                         if (initialized.current) {
                             let alertTriggered = false;
