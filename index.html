@@ -22,9 +22,16 @@
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
         .fade-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
         input[type="time"]::-webkit-calendar-picker-indicator,
         input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
+        
+        :root { --custom-color: #4f46e5; }
+        .custom-bg { background-color: var(--custom-color) !important; color: white !important;}
+        .custom-text { color: var(--custom-color) !important; }
+        .custom-border { border-color: var(--custom-color) !important; }
     </style>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -33,11 +40,12 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-brand-50 text-neutral-900">
+<body class="bg-brand-50 text-neutral-900 overflow-x-hidden">
 <div id="root"></div>
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
+    // --- IMPORTANTE: TUS CREDENCIALES DE FIREBASE ---
     const firebaseConfig = {
         apiKey: "AIzaSyAz0trpUxBYqZ_Ws0TnKjXQLpsSlgf6wqQ",
         authDomain: "turno-facil-53956.firebaseapp.com",
@@ -52,9 +60,7 @@
     const db = firebase.firestore();
 
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            db.enableNetwork().catch(() => {});
-        }
+        if (document.visibilityState === 'visible') db.enableNetwork().catch(() => {});
     });
 
     // --- Iconos ---
@@ -68,23 +74,37 @@
     const IconSettings  = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>;
     const IconCalendar  = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
     const IconHistory   = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
-    const IconWhatsapp  = () => <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
+    const IconWhatsapp  = () => <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
     const IconBlock     = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>;
     const IconBell      = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>;
     const IconSearch    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>;
     const IconTrash     = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>;
+    const IconUpload    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>;
+    const IconShield    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>;
+    const IconCard      = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>;
+    const IconGlobe     = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
 
-    // --- Prefijos de país ---
+    // --- Componente Toast (Notificación Flotante) ---
+    const Toast = ({ toast, onClose }) => {
+        useEffect(() => {
+            if (toast) { const timer = setTimeout(onClose, 3000); return () => clearTimeout(timer); }
+        }, [toast, onClose]);
+        if (!toast) return null;
+        const bg = toast.type === 'error' ? 'bg-red-600' : 'bg-neutral-900';
+        return (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] slide-up">
+                <div className={`px-6 py-3 rounded-2xl shadow-2xl text-sm font-bold text-white flex items-center gap-2 ${bg} border border-white/20`}>
+                    {toast.type === 'error' ? '❌' : '✅'} {toast.message}
+                </div>
+            </div>
+        );
+    };
+
+    // --- Helpers ---
     const COUNTRY_CODES = [
-        { code:'54',  label:'+54 AR' },
-        { code:'598', label:'+598 UY' },
-        { code:'56',  label:'+56 CL' },
-        { code:'55',  label:'+55 BR' },
-        { code:'595', label:'+595 PY' },
-        { code:'591', label:'+591 BO' },
-        { code:'57',  label:'+57 CO' },
-        { code:'51',  label:'+51 PE' },
-        { code:'34',  label:'+34 ES' },
+        { code:'54',  label:'+54 AR' }, { code:'598', label:'+598 UY' }, { code:'56',  label:'+56 CL' },
+        { code:'55',  label:'+55 BR' }, { code:'595', label:'+595 PY' }, { code:'591', label:'+591 BO' },
+        { code:'57',  label:'+57 CO' }, { code:'51',  label:'+51 PE' }, { code:'34',  label:'+34 ES' },
         { code:'1',   label:'+1 US'  },
     ];
     const buildPhone = (prefix, local) => prefix + local.replace(/\D/g,'');
@@ -95,20 +115,13 @@
                 className="bg-neutral-50 border border-neutral-200 border-r-0 rounded-l-2xl px-2 py-4 text-sm outline-none focus:border-brand-600 font-medium text-neutral-600">
                 {COUNTRY_CODES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
-            <input name={nameLocal} type="tel" value={value} onChange={onChange}
-                placeholder={placeholder}
-                className="flex-1 p-4 text-sm bg-neutral-50 border border-neutral-200 rounded-r-2xl outline-none focus:border-brand-600"
-                required={required} />
+            <input name={nameLocal} type="tel" value={value} onChange={onChange} placeholder={placeholder} className="flex-1 p-4 text-sm bg-neutral-50 border border-neutral-200 rounded-r-2xl outline-none focus:border-brand-600" required={required} />
         </div>
     );
 
-    // --- Helpers ---
     const generateTimeSlots = (start, end, durationMins) => {
-        const slots = [];
-        let [sh, sm] = start.split(':').map(Number);
-        const [eh, em] = end.split(':').map(Number);
-        let cur = sh * 60 + sm;
-        const endM = eh * 60 + em;
+        const slots = []; let [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number);
+        let cur = sh * 60 + sm; const endM = eh * 60 + em;
         while (cur + durationMins <= endM) {
             slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
             cur += durationMins;
@@ -118,67 +131,45 @@
     const parseDateLocal = (s) => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
     const formatDate    = (s) => s ? s.split('-').reverse().join('/') : '';
     const getTodayStr   = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    const getDaysLeft   = (expiresAt) => {
+        if (!expiresAt) return 0;
+        const diff = new Date(expiresAt).getTime() - new Date().getTime();
+        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    };
 
     const DAYS = [{id:1,name:'Lun'},{id:2,name:'Mar'},{id:3,name:'Mie'},{id:4,name:'Jue'},{id:5,name:'Vie'},{id:6,name:'Sab'},{id:0,name:'Dom'}];
     const DEFAULT_WA_TEMPLATE = 'Hola {cliente}! Te confirmamos tu turno para el {fecha} a las {hora}hs en {negocio}. Te esperamos!';
     const buildWAMsg = (template, apt, businessName) =>
-        (template || DEFAULT_WA_TEMPLATE)
-            .replace('{cliente}', apt.client).replace('{fecha}', formatDate(apt.date))
-            .replace('{hora}', apt.time).replace('{negocio}', businessName);
+        (template || DEFAULT_WA_TEMPLATE).replace('{cliente}', apt.client).replace('{fecha}', formatDate(apt.date)).replace('{hora}', apt.time).replace('{negocio}', businessName);
 
-    // --- Notificaciones y Sonido ---
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) return false;
         if (Notification.permission === 'granted') return true;
-        const perm = await Notification.requestPermission();
-        return perm === 'granted';
+        return (await Notification.requestPermission()) === 'granted';
     };
     
     const showNotification = (title, body) => {
-        try {
-            if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(title, { body });
-            }
-        } catch (err) {
-            console.warn('Notificaciones nativas bloqueadas por el dispositivo.');
-        }
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); } 
+        catch (err) { console.warn('Notificaciones bloqueadas.'); }
     };
 
-    // Generador de sonido sintético (no requiere archivos externos)
     const playNotificationSound = () => {
         try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext; if (!AudioContext) return;
             const ctx = new AudioContext();
-            
             const playTone = (freq, delay, duration) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = 'sine'; // Tono suave
-                osc.frequency.value = freq;
-                
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'sine'; osc.frequency.value = freq;
                 gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
                 gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
-                
-                osc.start(ctx.currentTime + delay);
-                osc.stop(ctx.currentTime + delay + duration);
+                osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + duration);
             };
-            
-            // Produce un "Ding-Ding"
-            playTone(523.25, 0, 0.3);    // Nota Do
-            playTone(659.25, 0.15, 0.4); // Nota Mi
-        } catch (e) {
-            console.warn('Audio bloqueado por el navegador.', e);
-        }
+            playTone(523.25, 0, 0.3); playTone(659.25, 0.15, 0.4);
+        } catch (e) {}
     };
 
-    const Spinner = () => (
-        <div className="flex h-screen items-center justify-center bg-brand-50">
-            <div className="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-    );
+    const Spinner = () => (<div className="flex h-screen items-center justify-center bg-brand-50"><div className="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div></div>);
 
     const CustomDialog = ({ dialog, onClose }) => {
         if (!dialog) return null;
@@ -188,13 +179,8 @@
                     <h3 className="text-xl font-bold mb-2 text-neutral-900">{dialog.title}</h3>
                     <p className="text-neutral-600 mb-6 text-sm leading-relaxed">{dialog.message}</p>
                     <div className="flex justify-end gap-3">
-                        {dialog.type === 'confirm' && (
-                            <button onClick={onClose} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>
-                        )}
-                        <button onClick={() => { if(dialog.onConfirm) dialog.onConfirm(); onClose(); }}
-                            className="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition active:scale-95 text-sm">
-                            {dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}
-                        </button>
+                        {dialog.type === 'confirm' && (<button onClick={onClose} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>)}
+                        <button onClick={() => { if(dialog.onConfirm) dialog.onConfirm(); onClose(); }} className="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition active:scale-95 text-sm">{dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}</button>
                     </div>
                 </div>
             </div>
@@ -207,6 +193,7 @@
         const [view, setView]     = useState('loading');
         const [profId, setProfId] = useState(null);
         const [dialog, setDialog] = useState(null);
+        const [toast, setToast]   = useState(null);
 
         useEffect(() => {
             const params = new URLSearchParams(window.location.search);
@@ -214,6 +201,7 @@
             const unsub = auth.onAuthStateChanged((u) => {
                 setUser(u);
                 if (p) { setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(console.error); }
+                else if (u && u.email === 'admin@turnofacilpro.com') { setView('superadmin'); }
                 else   { setView('admin'); }
             });
             return () => unsub();
@@ -222,59 +210,57 @@
         if (view === 'loading') return <Spinner />;
         return (
             <>
-                {view === 'client' ? <ClientView profId={profId} setDialog={setDialog} /> : <AdminView user={user} setDialog={setDialog} />}
+                {view === 'client' ? <ClientView profId={profId} setDialog={setDialog} setToast={setToast} /> : 
+                 view === 'superadmin' ? <SuperAdminView user={user} setDialog={setDialog} setToast={setToast} /> : 
+                 <AdminView user={user} setDialog={setDialog} setToast={setToast} />}
                 <CustomDialog dialog={dialog} onClose={() => setDialog(null)} />
+                <Toast toast={toast} onClose={() => setToast(null)} />
             </>
         );
     }
 
     // ===================== AUTH =====================
-    function AuthScreen({ setDialog }) {
+    function AuthScreen({ setDialog, setToast }) {
         const [mode, setMode]             = useState('login');
         const [loading, setLoading]       = useState(false);
-        const [error, setError]           = useState('');
-        const [success, setSuccess]       = useState('');
         const [phonePrefix, setPhonePrefix] = useState('54');
         const [phoneLocal, setPhoneLocal]   = useState('');
 
         const handleSubmit = async (e) => {
-            e.preventDefault(); setError(''); setSuccess(''); setLoading(true);
+            e.preventDefault(); setLoading(true);
             try {
                 if (mode === 'forgot') {
                     await auth.sendPasswordResetEmail(e.target.email.value);
-                    setSuccess('¡Listo! Revisá tu correo para restablecer la contraseña.');
-                    setLoading(false); return;
+                    setDialog({type:'alert', title:'Correo enviado', message:'Revisá tu correo para restablecer la contraseña.'});
+                    setMode('login'); setLoading(false); return;
                 }
                 if (mode === 'login') {
-                    const persistence = e.target.remember?.checked
-                        ? firebase.auth.Auth.Persistence.LOCAL
-                        : firebase.auth.Auth.Persistence.SESSION;
-                    await auth.setPersistence(persistence);
+                    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
                     await auth.signInWithEmailAndPassword(e.target.email.value, e.target.password.value);
+                    setToast({ type:'success', message: 'Sesión iniciada' });
                 } else {
                     const fullPhone = buildPhone(phonePrefix, phoneLocal);
-                    if (phoneLocal.replace(/\D/g,'').length < 8) {
-                        setError('Teléfono inválido. Ingresá el número sin el 0 ni el 15.'); setLoading(false); return;
-                    }
+                    if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Teléfono inválido.'}); setLoading(false); return; }
+                    
                     const res = await auth.createUserWithEmailAndPassword(e.target.email.value, e.target.password.value);
+                    const expirationDate = new Date();
+                    expirationDate.setDate(expirationDate.getDate() + 30);
+
                     await db.collection("professionals").doc(res.user.uid).set({
                         name: e.target.name.value, business: e.target.business.value,
                         service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
                         waTemplate: DEFAULT_WA_TEMPLATE,
+                        licenseExpiresAt: expirationDate.toISOString(),
+                        subscriptionStatus: 'trial', 
+                        isSuspended: false,
+                        themeColor: '#4f46e5', logoBase64: '',
                         config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, blockedDates:[] }
                     });
+                    setToast({ type:'success', message: 'Cuenta creada con éxito' });
                 }
             } catch (err) {
-                const msgs = {
-                    'auth/user-not-found':'No existe una cuenta con ese correo.',
-                    'auth/wrong-password':'Contraseña incorrecta.',
-                    'auth/email-already-in-use':'Ese correo ya está registrado.',
-                    'auth/invalid-email':'El correo no es válido.',
-                    'auth/weak-password':'La contraseña debe tener al menos 6 caracteres.',
-                    'auth/too-many-requests':'Demasiados intentos. Esperá unos minutos.',
-                    'auth/invalid-credential':'Correo o contraseña incorrectos.',
-                };
-                setError(msgs[err.code] || 'Ocurrió un error. Intentá de nuevo.');
+                const msgs = { 'auth/user-not-found':'Cuenta no encontrada.', 'auth/wrong-password':'Contraseña incorrecta.', 'auth/email-already-in-use':'Correo ya registrado.' };
+                setToast({ type:'error', message: msgs[err.code] || 'Ocurrió un error.' });
             } finally { setLoading(false); }
         };
 
@@ -286,59 +272,25 @@
                         <h1 className="text-3xl font-bold text-neutral-950 tracking-tighter">Turno Fácil<span className="text-brand-600">Pro</span></h1>
                     </div>
                     <div className="bg-white p-8 rounded-4xl shadow-2xl shadow-brand-100/50 border border-neutral-100">
-                        <h2 className="text-xl font-semibold mb-1">
-                            {mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Creá tu cuenta' : 'Recuperar contraseña'}
-                        </h2>
-                        <p className="text-neutral-500 mb-6 text-sm">
-                            {mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Configurá tu panel profesional.' : 'Te enviamos un link a tu correo.'}
-                        </p>
-                        {error   && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 border border-red-100">{error}</div>}
-                        {success && <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-sm mb-4 border border-emerald-100">{success}</div>}
+                        <h2 className="text-xl font-semibold mb-1">{mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Creá tu cuenta gratis' : 'Recuperar contraseña'}</h2>
+                        <p className="text-neutral-500 mb-6 text-sm">{mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Probá el sistema completo por 30 días.' : 'Te enviamos un link a tu correo.'}</p>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {mode === 'register' && (<>
-                                <div className="relative"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconUser /></div>
-                                    <input name="name" className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required /></div>
-                                <div className="relative"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconBriefcase /></div>
-                                    <input name="business" className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required /></div>
-                                <div className="relative"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconSettings /></div>
-                                    <input name="service" className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required /></div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-neutral-500 mb-1.5 ml-1">WhatsApp profesional</label>
-                                    <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} required />
-                                    <p className="text-xs text-neutral-400 mt-1 ml-1">Sin el 0 ni el 15. Ej: 1122334455</p>
-                                </div>
+                                <input name="name" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required />
+                                <input name="business" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required />
+                                <input name="service" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required />
+                                <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} required />
                             </>)}
-                            <div className="relative"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconMail /></div>
-                                <input name="email" type="email" className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo electrónico" required /></div>
-                            {mode !== 'forgot' && (
-                                <div className="relative"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconLock /></div>
-                                    <input name="password" type="password" className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Contraseña" required /></div>
-                            )}
-                            {mode === 'login' && (
-                                <div className="flex items-center justify-between">
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-neutral-600">
-                                        <input name="remember" type="checkbox" defaultChecked={true} className="w-4 h-4 rounded accent-brand-600" />
-                                        Recordar sesión
-                                    </label>
-                                    <button type="button" onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
-                                        className="text-brand-600 text-sm font-medium hover:underline">Olvidé mi contraseña</button>
-                                </div>
-                            )}
-                            <button type="submit" disabled={loading} className={`w-full text-white py-4 rounded-2xl font-semibold shadow-lg transition ${loading ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 active:scale-[0.98]'}`}>
-                                {loading ? 'Procesando...' : mode==='login' ? 'Ingresar' : mode==='register' ? 'Crear Cuenta' : 'Enviar link de recuperación'}
+                            <input name="email" type="email" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo" required />
+                            {mode !== 'forgot' && <input name="password" type="password" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Contraseña" required />}
+                            <button type="submit" disabled={loading} className={`w-full text-white py-4 rounded-2xl font-semibold shadow-lg transition ${loading ? 'bg-brand-400' : 'bg-brand-600 active:scale-[0.98]'}`}>
+                                {loading ? 'Procesando...' : mode==='login' ? 'Ingresar' : mode==='register' ? 'Crear Cuenta' : 'Enviar link'}
                             </button>
                         </form>
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && (
-                                <button onClick={() => { setMode('register'); setError(''); setSuccess(''); }} className="block w-full text-brand-600 text-sm font-medium">
-                                    ¿No tenés cuenta? <span className="underline">Registrate acá</span>
-                                </button>
-                            )}
-                            {mode !== 'login' && (
-                                <button onClick={() => { setMode('login'); setError(''); setSuccess(''); }} className="block w-full text-neutral-500 text-sm">
-                                    Volver al inicio de sesión
-                                </button>
-                            )}
+                            {mode !== 'register' && <button onClick={() => setMode('register')} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate</button>}
+                            {mode === 'login' && <button onClick={() => setMode('forgot')} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
+                            {mode !== 'login' && <button onClick={() => setMode('login')} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
                     </div>
                 </div>
@@ -346,166 +298,321 @@
         );
     }
 
-    // ===================== ADMIN =====================
-    function AdminView({ user, setDialog }) {
+    // ===================== SUPER ADMIN VIEW =====================
+    function SuperAdminView({ user, setDialog, setToast }) {
+        const [profs, setProfs] = useState([]);
+        const [search, setSearch] = useState('');
+        const [tab, setTab] = useState('licenses'); 
+        const [settings, setSettings] = useState({ mpPrice: '5000', paypalPrice: '15' });
+        
+        // Control de los inputs visuales para permitir puntos en los números
+        const [mpPriceInput, setMpPriceInput] = useState('');
+        const [paypalPriceInput, setPaypalPriceInput] = useState('');
+        const [loading, setLoading] = useState(true);
+
+        useEffect(() => {
+            const unsubProfs = db.collection("professionals").onSnapshot(snap => {
+                setProfs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                setLoading(false);
+            });
+            const unsubSettings = db.collection("settings").doc("payment").onSnapshot(doc => {
+                if(doc.exists) {
+                    const data = doc.data();
+                    setSettings(data);
+                    setMpPriceInput(data.mpPrice || '5000');
+                    setPaypalPriceInput(data.paypalPrice || '15');
+                }
+            });
+            return () => { unsubProfs(); unsubSettings(); };
+        }, []);
+
+        const handleMpChange = (e) => setMpPriceInput(e.target.value.replace(/\D/g, ''));
+        const handlePaypalChange = (e) => setPaypalPriceInput(e.target.value.replace(/\D/g, ''));
+
+        const saveMpPrice = async (e) => {
+            e.preventDefault();
+            await db.collection("settings").doc("payment").set({ mpPrice: mpPriceInput }, { merge: true });
+            setToast({ type:'success', message:'Precio de Mercado Pago actualizado.' });
+        };
+
+        const savePaypalPrice = async (e) => {
+            e.preventDefault();
+            await db.collection("settings").doc("payment").set({ paypalPrice: paypalPriceInput }, { merge: true });
+            setToast({ type:'success', message:'Precio de PayPal actualizado.' });
+        };
+
+        const renewLicense = async (prof) => {
+            setDialog({
+                type: 'confirm', title: 'Renovar Licencia',
+                message: `¿Agregar 30 días a ${prof.business}? Pasará a estado Premium.`,
+                onConfirm: async () => {
+                    const baseDate = getDaysLeft(prof.licenseExpiresAt) > 0 ? new Date(prof.licenseExpiresAt) : new Date();
+                    baseDate.setDate(baseDate.getDate() + 30);
+                    await db.collection("professionals").doc(prof.id).update({ licenseExpiresAt: baseDate.toISOString(), subscriptionStatus: 'paid', isSuspended: false });
+                    setToast({ type:'success', message: 'Licencia renovada por 30 días.' });
+                }
+            });
+        };
+
+        const toggleSuspend = async (prof) => {
+            const action = prof.isSuspended ? 'Reactivar' : 'Suspender';
+            setDialog({
+                type: 'confirm', title: `${action} Cuenta`, message: `¿Querés ${action.toLowerCase()} a ${prof.business}?`,
+                onConfirm: async () => { 
+                    await db.collection("professionals").doc(prof.id).update({ isSuspended: !prof.isSuspended }); 
+                    setToast({ type:'success', message: `Cuenta ${action.toLowerCase()}a correctamente.` });
+                }
+            });
+        };
+
+        const deleteProf = async (prof) => {
+            setDialog({
+                type: 'confirm', title: 'Borrar Permanentemente',
+                message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos. Esto no se deshace.`,
+                onConfirm: async () => {
+                    setLoading(true);
+                    const apts = await db.collection("appointments").where("profId", "==", prof.id).get();
+                    const batch = db.batch();
+                    apts.docs.forEach(d => batch.delete(d.ref));
+                    batch.delete(db.collection("professionals").doc(prof.id));
+                    await batch.commit();
+                    setLoading(false);
+                    setToast({ type:'success', message: 'Usuario borrado de la base de datos.' });
+                }
+            });
+        };
+
+        if (loading) return <Spinner />;
+
+        const filteredProfs = profs.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.email?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search));
+
+        return (
+            <div className="max-w-6xl mx-auto p-4 md:p-8 fade-in pb-20">
+                <header className="flex justify-between items-center mb-8 pb-6 border-b border-neutral-200">
+                    <div>
+                        <span className="text-sm font-bold text-red-600 tracking-widest uppercase"><IconShield className="inline w-4 h-4 mr-1"/> Super Admin</span>
+                        <h1 className="text-3xl font-bold text-neutral-950">Turno Fácil Pro</h1>
+                    </div>
+                    <button onClick={() => auth.signOut()} className="text-neutral-500 hover:text-red-600 font-medium text-sm flex items-center gap-2">
+                        <IconLogout /> Salir
+                    </button>
+                </header>
+
+                <div className="flex gap-2 mb-6 bg-white p-2 rounded-2xl border border-neutral-100 shadow-sm w-max">
+                    <button onClick={() => setTab('licenses')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='licenses' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Lista de Licencias</button>
+                    <button onClick={() => setTab('settings')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='settings' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Configuración de Pagos</button>
+                </div>
+
+                {tab === 'settings' && (
+                    <div className="fade-in grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
+                        
+                        {/* CARD: PRECIO MERCADO PAGO */}
+                        <div className="bg-green-50 border border-green-200 p-6 rounded-3xl shadow-sm">
+                            <h3 className="font-bold text-green-800 flex items-center gap-2 mb-2"><IconCard /> PRECIO EN MERCADO PAGO (ARS)</h3>
+                            <p className="text-sm text-green-700 mb-4">Este monto se muestra en el botón de pago de Mercado Pago. Guardalo en Firebase sin tocar el código.</p>
+                            <form onSubmit={saveMpPrice} className="flex flex-col gap-3">
+                                <div className="relative w-full">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none font-bold text-green-800">AR$</div>
+                                    <input type="text" value={mpPriceInput ? Number(mpPriceInput).toLocaleString('es-AR') : ''} onChange={handleMpChange} className="w-full pl-14 pr-4 py-3.5 bg-white border border-green-200 rounded-xl outline-none focus:border-green-500 text-lg font-bold text-neutral-800" required />
+                                </div>
+                                <button type="submit" className="w-full bg-[#009ee3] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#0089c4] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
+                                    &#128190; GUARDAR PRECIO
+                                </button>
+                            </form>
+                        </div>
+
+                        {/* CARD: PRECIO PAYPAL */}
+                        <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl shadow-sm">
+                            <h3 className="font-bold text-blue-800 flex items-center gap-2 mb-2"><IconGlobe /> PRECIO EN PAYPAL (USD)</h3>
+                            <p className="text-sm text-blue-700 mb-4">Este monto se usa para generar el link automático hacia tu cuenta de PayPal.</p>
+                            <form onSubmit={savePaypalPrice} className="flex flex-col gap-3">
+                                <div className="relative w-full">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none font-bold text-blue-800">USD</div>
+                                    <input type="text" value={paypalPriceInput} onChange={handlePaypalChange} className="w-full pl-16 pr-4 py-3.5 bg-white border border-blue-200 rounded-xl outline-none focus:border-blue-500 text-lg font-bold text-neutral-800" required />
+                                </div>
+                                <button type="submit" className="w-full bg-[#003087] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#001c56] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
+                                    &#128190; GUARDAR PRECIO
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {tab === 'licenses' && (
+                    <div className="fade-in space-y-4">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400"><IconSearch /></div>
+                            <input type="text" placeholder="Buscar Usuario por WhatsApp, nombre o email..." value={search} onChange={e => setSearch(e.target.value)}
+                                className="w-full pl-12 pr-4 py-4 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-neutral-900 shadow-sm font-medium" />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filteredProfs.map(p => {
+                                const daysLeft = getDaysLeft(p.licenseExpiresAt);
+                                const isExpired = daysLeft <= 0;
+                                return (
+                                <div key={p.id} className={`bg-white p-5 rounded-3xl border ${p.isSuspended ? 'border-red-300 bg-red-50' : isExpired ? 'border-orange-200' : 'border-neutral-200'} shadow-sm relative overflow-hidden`}>
+                                    <div className="mb-4">
+                                        <h3 className="font-bold text-lg text-neutral-900">{p.business}</h3>
+                                        <p className="text-xs text-neutral-500">{p.name} · {p.email}</p>
+                                        <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-emerald-600 text-sm font-bold mt-1 block hover:underline">{p.phone}</a>
+                                    </div>
+                                    <div className="flex gap-2 mb-4">
+                                        {p.isSuspended ? <span className="bg-red-100 text-red-700 px-2.5 py-1 rounded-lg text-xs font-bold">Suspendido</span> :
+                                         isExpired ? <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Vencido</span> :
+                                         p.subscriptionStatus === 'trial' ? <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-bold">Prueba ({daysLeft} días)</span> :
+                                         <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-xs font-bold">Pagado ({daysLeft} días)</span>}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-neutral-100/50">
+                                        <button onClick={() => renewLicense(p)} className="col-span-2 bg-neutral-900 text-white py-2 rounded-xl text-xs font-bold hover:bg-neutral-800 transition">Renovar (+30 días)</button>
+                                        <button onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2 rounded-xl text-xs font-bold hover:bg-orange-200 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
+                                        <button onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2 rounded-xl text-xs font-bold hover:bg-red-200 transition">Borrar Físico</button>
+                                    </div>
+                                </div>
+                            )})}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // ===================== PAYWALL VIEW =====================
+    function PaywallView({ userEmail, isSuspended }) {
+        const [settings, setSettings] = useState({ mpPrice: '5000', paypalPrice: '15' });
+        
+        useEffect(() => {
+            db.collection("settings").doc("payment").get().then(doc => { if(doc.exists) setSettings({ ...settings, ...doc.data() }); });
+        }, []);
+
+        const waMessage = encodeURIComponent(`Hola! Acabo de realizar el pago para renovar la licencia de Turno Fácil Pro por 30 días.\n\nMi correo registrado es: *${userEmail}*\n\nTe adjunto mi comprobante de pago:`);
+        const adminWaLink = `https://wa.me/5491135654094?text=${waMessage}`;
+        
+        const mpLink = "https://mpago.li/1wHMvGg";
+        const paypalLink = `https://paypal.me/MatiasRodriguez1789/${settings.paypalPrice}usd`;
+
+        // Damos formato visual al precio de Mercado Pago para el botón
+        const formattedMpPrice = Number(settings.mpPrice || 5000).toLocaleString('es-AR');
+
+        return (
+            <div className="min-h-screen bg-brand-50 flex items-center justify-center p-6 fade-in">
+                <div className="bg-white p-8 rounded-4xl shadow-xl max-w-md w-full border border-neutral-100 text-center">
+                    <div className={`w-20 h-20 ${isSuspended ? 'bg-red-100 text-red-600' : 'bg-brand-100 text-brand-600'} rounded-full flex items-center justify-center mx-auto mb-6 text-4xl`}>
+                        {isSuspended ? '&#10060;' : '&#128274;'}
+                    </div>
+                    <h2 className="text-2xl font-bold tracking-tight mb-2">{isSuspended ? 'Cuenta Suspendida' : 'Tu licencia finalizó'}</h2>
+                    <p className="text-neutral-500 text-sm mb-6">
+                        {isSuspended ? 'Tu panel y reservas han sido desactivadas temporalmente. Contactanos para regularizar.' : 'Para seguir usando tu panel de control y permitir reservas, por favor renová tu licencia.'}
+                    </p>
+                    
+                    {!isSuspended && (
+                        <div className="space-y-3 mb-6">
+                            <a href={mpLink} target="_blank" className="block w-full bg-[#009ee3] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#0089c4] transition shadow-md">
+                                Pagar con Mercado Pago (AR$ {formattedMpPrice})
+                            </a>
+                            <a href={paypalLink} target="_blank" className="block w-full bg-[#003087] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#001c56] transition shadow-md">
+                                Pagar con PayPal ({settings.paypalPrice} USD)
+                            </a>
+                        </div>
+                    )}
+                    
+                    <div className="pt-6 border-t border-neutral-100">
+                        <p className="text-xs text-neutral-500 font-medium mb-3">{isSuspended ? 'Soporte Administrativo' : '¿Ya realizaste el pago?'}</p>
+                        <a href={adminWaLink} target="_blank" className="flex items-center justify-center gap-2 w-full bg-emerald-500 text-white py-3 rounded-2xl font-semibold hover:bg-emerald-600 transition shadow-md text-sm">
+                            <IconWhatsapp /> Enviar comprobante
+                        </a>
+                    </div>
+                    <button onClick={() => auth.signOut()} className="mt-8 text-sm font-medium text-neutral-400 hover:text-neutral-600 underline">Cerrar Sesión</button>
+                </div>
+            </div>
+        );
+    }
+
+    // ===================== ADMIN (PROFESSIONAL) =====================
+    function AdminView({ user, setDialog, setToast }) {
         const [profile, setProfile]       = useState(null);
         const [apts, setApts]             = useState([]);
         const [pastApts, setPastApts]     = useState([]);
         const [loading, setLoading]       = useState(true);
         const [activeTab, setActiveTab]   = useState('appointments');
-        const [newBlockDate, setNewBlockDate] = useState('');
-        
         const [profPhonePrefix, setProfPhonePrefix] = useState('54');
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
+        const [logoPreview, setLogoPreview] = useState('');
 
-        const prevAptIds  = useRef(new Set());
-        const initialized = useRef(false);
+        const prevAptIds  = useRef(new Set()); const initialized = useRef(false);
 
-        useEffect(() => {
-            if (user && !user.isAnonymous) requestNotificationPermission();
-        }, [user]);
+        useEffect(() => { if (user && !user.isAnonymous) requestNotificationPermission(); }, [user]);
 
         useEffect(() => {
-            if (!user || user.isAnonymous) { 
-                setLoading(false); 
-                setProfile(null);
-                setApts([]);
-                setPastApts([]);
-                return; 
-            }
-
-            let active = true;
-            let unsubApts = null;
-            let retryTimer = null;
-
+            if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
+            let active = true; let unsubApts = null;
             const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
-                (d) => { if (!active) return; if (d.exists) setProfile(d.data()); else setProfile(null); setLoading(false); },
-                (err) => { console.error(err); if (active) { setLoading(false); setProfile(null); } }
+                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); setLogoPreview(d.data().logoBase64 || ''); } else setProfile(null); setLoading(false); }
             );
-
             const subscribeApts = () => {
                 if (!active) return;
-                unsubApts = db.collection("appointments")
-                    .where("profId","==",user.uid)
-                    .onSnapshot(
-                        (snap) => {
-                            if (!active) return;
-                            const today = getTodayStr();
-                            const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                            const newList = all.filter(a => a.date >= today)
-                                .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-                            const pastList = all.filter(a => a.date < today)
-                                .sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                            
-                            // 1. ACTUALIZAR PANTALLA ANTES DE NOTIFICAR
-                            setApts(newList);
-                            setPastApts(pastList);
-
-                            // 2. NOTIFICAR Y REPRODUCIR SONIDO
-                            if (initialized.current) {
-                                let alertTriggered = false;
-                                
-                                newList.forEach(apt => {
-                                    if (!prevAptIds.current.has(apt.id)) {
-                                        showNotification('Nuevo turno reservado', `${apt.client} - ${formatDate(apt.date)} ${apt.time}hs`);
-                                        alertTriggered = true;
-                                    }
-                                });
-                                
-                                const removed = [...prevAptIds.current].filter(id => !newList.find(a => a.id === id));
-                                if (removed.length > 0) {
-                                    showNotification('Turno cancelado', 'Un cliente canceló su turno.');
-                                    alertTriggered = true;
-                                }
-                                
-                                // Si hubo algún cambio nuevo, reproducimos el sonido
-                                if (alertTriggered) playNotificationSound();
-                            }
-                            
-                            prevAptIds.current = new Set(newList.map(a => a.id));
-                            initialized.current = true;
-                        },
-                        (err) => {
-                            console.error('Snapshot error:', err.code || err.message);
-                            if (active) retryTimer = setTimeout(subscribeApts, 3000);
+                unsubApts = db.collection("appointments").where("profId","==",user.uid).onSnapshot(
+                    (snap) => {
+                        if (!active) return; const today = getTodayStr();
+                        const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        const newList = all.filter(a => a.date >= today).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+                        const pastList = all.filter(a => a.date < today).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                        setApts(newList); setPastApts(pastList);
+                        if (initialized.current) {
+                            let alertTriggered = false;
+                            newList.forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
+                            if ([...prevAptIds.current].filter(id => !newList.find(a => a.id === id)).length > 0) alertTriggered = true;
+                            if (alertTriggered) playNotificationSound();
                         }
-                    );
+                        prevAptIds.current = new Set(newList.map(a => a.id)); initialized.current = true;
+                    }
+                );
             };
-
             subscribeApts();
-
-            return () => {
-                active = false;
-                clearTimeout(retryTimer);
-                try { unsubProf(); } catch(e) {}
-                if (unsubApts) try { unsubApts(); } catch(e) {}
-            };
+            return () => { active = false; try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
         }, [user]);
 
         useEffect(() => {
             if (profile?.phone) {
                 const guessPrefix = COUNTRY_CODES.find(c => profile.phone.startsWith(c.code))?.code || '54';
-                const guessLocal  = profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone;
                 setProfPhonePrefix(guessPrefix);
-                setProfPhoneLocal(guessLocal);
+                setProfPhoneLocal(profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone);
             }
         }, [profile]);
 
-        if (!user || user.isAnonymous) return <AuthScreen setDialog={setDialog} />;
+        if (!user || user.isAnonymous) return <AuthScreen setDialog={setDialog} setToast={setToast} />;
         if (loading) return <Spinner />;
-        if (!profile) return <AuthScreen setDialog={setDialog} />;
+        if (!profile) return <AuthScreen setDialog={setDialog} setToast={setToast} />;
+
+        const daysLeft = getDaysLeft(profile.licenseExpiresAt);
+        const isExpired = daysLeft <= 0;
+        
+        if (isExpired || profile.isSuspended) return <PaywallView userEmail={user.email} isSuspended={profile.isSuspended} />;
 
         const shareUrl = window.location.origin + window.location.pathname + "?p=" + user.uid;
-        const waTemplate = profile.waTemplate || DEFAULT_WA_TEMPLATE;
-
-        const sendWhatsAppConfirm = (a) => {
-            const msg = encodeURIComponent(buildWAMsg(waTemplate, a, profile.business));
-            window.open(`https://wa.me/${(a.phone||'').replace(/\D/g,'')}?text=${msg}`, '_blank');
-        };
-
-        const deleteApt = (a) => {
-            setDialog({
-                type: 'confirm', title: 'Eliminar Turno',
-                message: `¿Estás seguro de eliminar el turno de ${a.client}?`,
-                onConfirm: async () => {
-                    setApts(prev => prev.filter(apt => apt.id !== a.id));
-                    try { await db.collection("appointments").doc(a.id).delete(); }
-                    catch (err) {
-                        setApts(prev => [...prev, a].sort((x,y) => x.date.localeCompare(y.date)||x.time.localeCompare(y.time)));
-                        setDialog({ type:'alert', title:'Error', message:'No se pudo eliminar. Intenta de nuevo.' });
-                    }
-                }
-            });
+        
+        const handleLogoUpload = (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            if (file.size > 200000) { setToast({type:'error', message:'La imagen es muy pesada. Elegí una menor a 200kb.'}); return; }
+            const reader = new FileReader(); reader.onloadend = () => setLogoPreview(reader.result); reader.readAsDataURL(file);
         };
 
         const updateProfile = async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.target);
+            e.preventDefault(); const f = new FormData(e.target);
             const workingDays = DAYS.filter(d => f.get(`day_${d.id}`)).map(d => d.id);
-            const prefix = f.get('phonePrefix') || '54';
-            const local  = (f.get('phoneLocal') || '').replace(/\D/g,'');
-            if (local.length < 8) { setDialog({ type:'alert', title:'Error', message:'Teléfono inválido.'}); return; }
+            const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
+            if (local.length < 8) return;
             await db.collection("professionals").doc(user.uid).update({
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
-                phone: prefix+local, waTemplate: f.get('waTemplate'),
+                phone: f.get('phonePrefix')+local, waTemplate: f.get('waTemplate'),
+                themeColor: f.get('themeColor'), logoBase64: logoPreview,
                 config: {
                     workingDays: workingDays.length > 0 ? workingDays : profile.config?.workingDays,
                     startTime: f.get('startTime'), endTime: f.get('endTime'),
                     duration: Number(f.get('duration')), blockedDates: profile.config?.blockedDates || []
                 }
             });
-            setDialog({ type:'alert', title:'Éxito', message:'¡Perfil actualizado correctamente!'});
-        };
-
-        const addBlockedDate = async () => {
-            if (!newBlockDate) return;
-            const current = profile.config?.blockedDates || [];
-            if (current.includes(newBlockDate)) { setDialog({ type:'alert', title:'Atención', message:'Esta fecha ya está bloqueada.'}); return; }
-            await db.collection("professionals").doc(user.uid).update({ 'config.blockedDates': [...current, newBlockDate].sort() });
-            setNewBlockDate('');
-        };
-        const removeBlockedDate = async (date) => {
-            await db.collection("professionals").doc(user.uid).update({ 'config.blockedDates': (profile.config?.blockedDates||[]).filter(d => d !== date) });
+            setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
         };
 
         return (
@@ -515,6 +622,9 @@
                         <span className="text-sm font-medium text-brand-600">Panel de Control</span>
                         <h1 className="text-3xl font-bold text-neutral-950 tracking-tighter">{profile.business}</h1>
                         <p className="text-neutral-600">Bienvenido, {profile.name}</p>
+                        <div className={`mt-2 inline-block px-3 py-1 rounded-lg text-xs font-bold border ${daysLeft <= 5 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                            Licencia activa: {daysLeft} días restantes
+                        </div>
                     </div>
                     <div className="flex flex-col items-end gap-3">
                         <button onClick={() => auth.signOut()} className="text-neutral-400 hover:text-red-500 flex items-center gap-1.5 text-sm font-medium transition-colors"><IconLogout /> Cerrar Sesión</button>
@@ -522,7 +632,7 @@
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Tu link de reservas</label>
                             <div className="flex items-center gap-2 bg-neutral-50 border rounded-xl p-1 px-3">
                                 <input type="text" readOnly value={shareUrl} className="flex-1 bg-transparent text-xs py-1.5 outline-none text-neutral-700 w-0" />
-                                <button onClick={() => {navigator.clipboard.writeText(shareUrl); setDialog({type:'alert',title:'Éxito',message:'¡Link copiado al portapapeles!'});}} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
+                                <button onClick={() => {navigator.clipboard.writeText(shareUrl); setToast({type:'success', message:'¡Link copiado!'});}} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
                             </div>
                         </div>
                     </div>
@@ -536,29 +646,17 @@
 
                 {activeTab === 'appointments' && (
                     <div className="fade-in">
-                        <div className="mb-6 flex items-center justify-between">
-                            <h2 className="text-2xl font-semibold tracking-tight">Turnos Programados</h2>
-                            <span className="bg-brand-100 text-brand-700 px-3 py-1 rounded-full text-sm font-medium">{apts.length} turnos</span>
-                        </div>
+                        <h2 className="text-2xl font-semibold mb-6">Turnos Programados</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {apts.length === 0 ? (
-                                <div className="col-span-full bg-white p-16 text-center rounded-4xl border border-neutral-100 shadow-sm">
-                                    <span className="text-6xl block mb-4">&#128269;</span>
-                                    <h3 className="text-lg font-semibold">No hay turnos agendados</h3>
-                                    <p className="text-neutral-500 mt-1">Compartí tu link para empezar a recibir reservas.</p>
-                                </div>
-                            ) : apts.map(a => (
-                                <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100 hover:border-brand-100 transition-colors group relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-2 h-full bg-brand-600 group-hover:w-3 transition-all"></div>
-                                    <div className="pl-4">
-                                        <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-sm border border-brand-100 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
-                                        <div className="font-bold text-neutral-950 uppercase text-lg tracking-tight">{a.client}</div>
-                                        <a href={`https://wa.me/${(a.phone||'').replace(/\D/g,'')}`} target="_blank" className="text-emerald-600 text-sm font-medium flex items-center gap-1.5 mt-1 hover:underline"><IconPhone /> {a.phone}</a>
-                                        {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">&#128172; {a.notes}</p>}
-                                        <div className="mt-5 pt-4 border-t border-neutral-100 flex justify-between items-center">
-                                            <button onClick={() => sendWhatsAppConfirm(a)} className="text-emerald-600 text-xs font-medium flex items-center gap-1 active:scale-95"><IconWhatsapp /> Confirmar WA</button>
-                                            <button onClick={() => deleteApt(a)} className="text-red-400 hover:text-red-600 text-xs font-medium flex items-center gap-1 active:scale-95"><IconTrash /> Eliminar</button>
-                                        </div>
+                            {apts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos agendados.</p> 
+                            : apts.map(a => (
+                                <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
+                                    <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-sm border border-brand-100 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
+                                    <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
+                                    <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
+                                    {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
+                                    <div className="mt-5 pt-4 border-t border-neutral-100 flex justify-between items-center">
+                                        <button onClick={async () => { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); }} className="text-red-400 text-xs font-medium flex gap-1"><IconTrash /> Eliminar</button>
                                     </div>
                                 </div>
                             ))}
@@ -566,107 +664,48 @@
                     </div>
                 )}
 
-                {activeTab === 'history' && (
-                    <div className="fade-in">
-                        <div className="mb-6 flex items-center justify-between">
-                            <h2 className="text-2xl font-semibold tracking-tight">Historial</h2>
-                            <span className="bg-neutral-100 text-neutral-600 px-3 py-1 rounded-full text-sm font-medium">{pastApts.length} atendidos</span>
-                        </div>
-                        {pastApts.length === 0 ? (
-                            <div className="bg-white p-16 text-center rounded-4xl border border-neutral-100 shadow-sm"><span className="text-6xl block mb-4">&#128203;</span><h3 className="text-lg font-semibold">Sin historial aún</h3></div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {pastApts.map(a => (
-                                    <div key={a.id} className="bg-white p-5 rounded-3xl shadow-sm border border-neutral-100 opacity-75">
-                                        <div className="bg-neutral-100 text-neutral-600 font-bold px-3 py-1.5 rounded-xl text-sm inline-block mb-2">{formatDate(a.date)} · {a.time} hs</div>
-                                        <div className="font-bold text-neutral-700 uppercase">{a.client}</div>
-                                        <div className="text-xs text-neutral-400 mt-1">{a.phone}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {activeTab === 'settings' && (
                     <div className="fade-in space-y-6">
                         <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
-                            <div className="flex items-center gap-3 mb-6"><IconSettings /><h2 className="text-xl font-semibold tracking-tight">Mi Perfil</h2></div>
-                            <form onSubmit={updateProfile} className="space-y-5">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre</label>
-                                        <input name="name" defaultValue={profile.name} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Negocio</label>
-                                        <input name="business" defaultValue={profile.business} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label>
-                                        <input name="service" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label>
-                                        <PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal"
-                                            prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix}
-                                            value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required />
-                                        <p className="text-xs text-neutral-400 mt-1">Sin el 0 ni el 15.</p>
-                                    </div>
-                                </div>
-                                <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Mensaje de confirmación WA</label>
-                                    <textarea name="waTemplate" defaultValue={waTemplate} rows="3" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600 resize-none"></textarea>
-                                    <p className="text-xs text-neutral-400 mt-1">Variables: {'{cliente}'}, {'{fecha}'}, {'{hora}'}, {'{negocio}'}</p>
-                                </div>
-                                <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días de atención</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {DAYS.map(d => (
-                                            <label key={d.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300">
-                                                <input name={`day_${d.id}`} type="checkbox" defaultChecked={(profile.config?.workingDays||[1,2,3,4,5]).includes(d.id)} className="accent-brand-600" />
-                                                <span className="text-sm font-medium">{d.name}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Hora inicio</label>
-                                        <input name="startTime" type="time" defaultValue={profile.config?.startTime||'09:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Hora fin</label>
-                                        <input name="endTime" type="time" defaultValue={profile.config?.endTime||'18:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Duración</label>
-                                        <select name="duration" defaultValue={profile.config?.duration||30} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600">
-                                            <option value="15">15 min</option><option value="30">30 min</option>
-                                            <option value="45">45 min</option><option value="60">1 hora</option>
-                                            <option value="90">1.5 horas</option><option value="120">2 horas</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <button type="submit" className="bg-brand-600 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg active:scale-[0.98] transition">Guardar Cambios</button>
-                            </form>
-                        </div>
-
-                        <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
-                            <div className="flex items-center gap-3 mb-2"><IconBlock /><h2 className="text-xl font-semibold tracking-tight">Fechas Bloqueadas</h2></div>
-                            <p className="text-sm text-neutral-500 mb-6">Feriados o vacaciones — los clientes no podrán reservar esos días.</p>
-                            <div className="flex gap-3 mb-5">
-                                <input type="date" value={newBlockDate} min={getTodayStr()} onChange={e => setNewBlockDate(e.target.value)} className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
-                                <button onClick={addBlockedDate} className="bg-brand-600 text-white px-5 py-3 rounded-xl font-semibold text-sm active:scale-[0.98]">Bloquear</button>
-                            </div>
-                            {(profile.config?.blockedDates||[]).length === 0 ? <p className="text-sm text-neutral-400 text-center py-4">No hay fechas bloqueadas.</p> : (
-                                <div className="flex flex-wrap gap-2">
-                                    {(profile.config?.blockedDates||[]).map(date => (
-                                        <div key={date} className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-100 px-3 py-1.5 rounded-xl text-sm font-medium">
-                                            {formatDate(date)}<button onClick={() => removeBlockedDate(date)} className="text-red-400 hover:text-red-700 font-bold">x</button>
+                            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2"><IconSettings /> Personalización y Perfil</h2>
+                            <form onSubmit={updateProfile} className="space-y-6">
+                                <div className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Color de tu marca</label>
+                                        <div className="flex items-center gap-3">
+                                            <input name="themeColor" type="color" defaultValue={profile.themeColor || '#4f46e5'} className="w-12 h-12 rounded cursor-pointer border-0 p-0" />
                                         </div>
-                                    ))}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Logo de la empresa</label>
+                                        <div className="flex items-center gap-4">
+                                            {logoPreview ? <img src={logoPreview} className="w-16 h-16 rounded-2xl object-cover border border-neutral-200 bg-white" /> 
+                                                         : <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-neutral-300 flex items-center justify-center text-neutral-400"><IconUpload/></div>}
+                                            <label className="bg-white border border-neutral-200 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer hover:bg-neutral-50 transition">
+                                                Subir <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                            </label>
+                                            {logoPreview && <button type="button" onClick={()=>setLogoPreview('')} className="text-red-500 text-xs font-bold">Quitar</button>}
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-
-                        <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
-                            <div className="flex items-center gap-3 mb-2"><IconBell /><h2 className="text-xl font-semibold tracking-tight">Notificaciones del navegador</h2></div>
-                            <p className="text-sm text-neutral-500 mb-4">Recibí alertas cuando alguien reserve o cancele un turno.</p>
-                            <button onClick={async () => {
-                                const ok = await requestNotificationPermission();
-                                setDialog({ type:'alert', title:'Notificaciones', message: ok ? '¡Notificaciones activadas!' : 'Permiso denegado. Habilitalo desde la configuración del navegador.' });
-                                playNotificationSound(); // Hacemos un sonido de prueba
-                            }} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-semibold text-sm active:scale-[0.98] transition">
-                                Activar notificaciones
-                            </button>
-                            <p className="text-xs text-neutral-400 mt-3">Funcionan mientras tengas el panel abierto en el navegador.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-neutral-100">
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre</label><input name="name" defaultValue={profile.name} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Negocio</label><input name="business" defaultValue={profile.business} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label><input name="service" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix} value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required /></div>
+                                </div>
+                                <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        {DAYS.map(d => (<label key={d.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300"><input name={`day_${d.id}`} type="checkbox" defaultChecked={(profile.config?.workingDays||[1,2,3,4,5]).includes(d.id)} className="accent-brand-600" /><span className="text-sm font-medium">{d.name}</span></label>))}
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div><input name="startTime" type="time" defaultValue={profile.config?.startTime||'09:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><input name="endTime" type="time" defaultValue={profile.config?.endTime||'18:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><select name="duration" defaultValue={profile.config?.duration||30} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm"><option value="15">15m</option><option value="30">30m</option><option value="60">1h</option></select></div>
+                                    </div>
+                                </div>
+                                <button type="submit" className="bg-brand-600 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg">Guardar Cambios</button>
+                            </form>
                         </div>
                     </div>
                 )}
@@ -675,7 +714,7 @@
     }
 
     // ===================== CLIENT =====================
-    function ClientView({ profId, setDialog }) {
+    function ClientView({ profId, setDialog, setToast }) {
         const [prof, setProf]               = useState(null);
         const [sent, setSent]               = useState(null);
         const [selectedDate, setSelectedDate] = useState('');
@@ -683,16 +722,18 @@
         const [bookedTimes, setBookedTimes] = useState([]);
         const [booking, setBooking]         = useState(false);
         const [clientView, setClientView]   = useState('book');
-        const [phonePrefix, setPhonePrefix] = useState('54');
         const [phoneLocal, setPhoneLocal]   = useState('');
+        const [profExpired, setProfExpired] = useState(false);
 
         useEffect(() => {
             db.collection("professionals").doc(profId).get().then(d => {
                 if (d.exists) {
                     const data = d.data();
+                    const daysLeft = getDaysLeft(data.licenseExpiresAt);
+                    if (daysLeft <= 0 || data.isSuspended) { setProfExpired(true); return; }
                     if (!data.config) data.config = { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, blockedDates:[] };
-                    if (!data.config.blockedDates) data.config.blockedDates = [];
                     setProf(data);
+                    if (data.themeColor) document.documentElement.style.setProperty('--custom-color', data.themeColor);
                     document.title = `Reservas - ${data.business}`;
                 }
             });
@@ -700,161 +741,99 @@
 
         useEffect(() => {
             if (selectedDate && profId) {
-                db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
-                    .then(snap => setBookedTimes(snap.docs.map(d => d.data().time)));
+                db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get().then(snap => setBookedTimes(snap.docs.map(d => d.data().time)));
                 setSelectedTime('');
             }
         }, [selectedDate, profId]);
 
         const handleBooking = async (e) => {
-            e.preventDefault();
-            if (!selectedTime) { setDialog({ type:'alert', title:'Atención', message:'Por favor, selecciona una hora.' }); return; }
-            if (booking) return;
-            const fullPhone = buildPhone(phonePrefix, phoneLocal);
-            if (phoneLocal.replace(/\D/g,'').length < 8) {
-                setDialog({ type:'alert', title:'Datos incorrectos', message:'Ingresá un WhatsApp válido sin el 0 ni el 15. Ej: 1122334455' });
-                return;
-            }
+            e.preventDefault(); if (!selectedTime) return;
             setBooking(true);
-            try { if (!auth.currentUser) await auth.signInAnonymously(); }
-            catch (authErr) { setDialog({ type:'alert', title:'Error de conexión', message:'Error de autenticación: '+authErr.message }); setBooking(false); return; }
-            const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
-            const slotRef = db.collection("appointments").doc(slotId);
-            try {
+            try { if (!auth.currentUser) await auth.signInAnonymously();
+                const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
+                const slotRef = db.collection("appointments").doc(slotId);
                 await db.runTransaction(async (tx) => {
-                    const slotDoc = await tx.get(slotRef);
-                    if (slotDoc.exists) throw new Error("SLOT_TAKEN");
-                    tx.set(slotRef, {
-                        profId, date: selectedDate, time: selectedTime,
-                        client: e.target.clientName.value, phone: fullPhone,
-                        notes: e.target.notes.value.trim() || '',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    const slotDoc = await tx.get(slotRef); if (slotDoc.exists) throw new Error("SLOT_TAKEN");
+                    tx.set(slotRef, { profId, date: selectedDate, time: selectedTime, client: e.target.clientName.value, phone: '54'+phoneLocal, notes: e.target.notes.value||'', createdAt: firebase.firestore.FieldValue.serverTimestamp()});
                 });
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
-            } catch (err) {
-                if (err.message === "SLOT_TAKEN") {
-                    setDialog({ type:'alert', title:'Turno ocupado', message:'¡Ese turno acaba de ser tomado! Elegí otro horario.' });
-                    const snap = await db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get();
-                    setBookedTimes(snap.docs.map(d => d.data().time));
-                    setSelectedTime('');
-                } else {
-                    setDialog({ type:'alert', title:'Error', message:'Ocurrió un problema: '+(err.code||err.message) });
-                }
-            } finally { setBooking(false); }
+            } catch (err) { setToast({ type:'error', message:'El turno fue tomado o hubo un error.' }); } finally { setBooking(false); }
         };
 
-        if (sent) return (
+        if (profExpired) return (
             <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
-                <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
-                    <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 text-5xl border border-emerald-100">&#10003;</div>
-                    <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
-                    <div className="mt-4 bg-brand-50 rounded-2xl p-4 border border-brand-100">
-                        <p className="text-brand-700 font-semibold text-lg">{formatDate(sent.date)}</p>
-                        <p className="text-brand-600 font-bold text-2xl">{sent.time} hs</p>
-                    </div>
-                    <p className="text-neutral-500 mt-4 text-sm">Reserva en <span className="font-semibold text-neutral-700">{prof?.business}</span> registrada.</p>
-                    <button onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setPhoneLocal(''); setClientView('cancel'); }}
-                        className="mt-6 w-full text-brand-600 border border-brand-200 py-3 rounded-2xl text-sm font-medium hover:bg-brand-50 transition">
-                        Ver mis turnos
-                    </button>
+                <div className="bg-white p-8 rounded-4xl shadow-xl max-w-sm w-full border border-neutral-100">
+                    <span className="text-5xl block mb-4">&#9888;&#65039;</span>
+                    <h2 className="text-xl font-bold mb-2">Servicio no disponible</h2>
+                    <p className="text-neutral-500 text-sm">El sistema de reservas de este negocio se encuentra temporalmente inactivo.</p>
                 </div>
             </div>
         );
 
-        if (!prof) return <div className="p-10 text-center bg-brand-50 h-screen text-neutral-500 flex items-center justify-center">Cargando...</div>;
+        if (sent) return (
+            <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
+                <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
+                    <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-6 text-5xl border border-white">&#10003;</div>
+                    <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
+                    <div className="mt-4 bg-neutral-50 rounded-2xl p-4 border custom-border">
+                        <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
+                        <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
+                    </div>
+                    <button onClick={() => { setSent(null); setSelectedDate(''); setClientView('cancel'); }} className="mt-6 w-full custom-text border custom-border py-3 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
+                </div>
+            </div>
+        );
 
-        let availableSlots = [], isWorkingDay = true, isBlockedDate = false;
-        const today = getTodayStr();
-        
+        if (!prof) return <Spinner />;
+
+        const today = getTodayStr(); let availableSlots = [];
         if (selectedDate) {
-            const dayOfWeek = parseDateLocal(selectedDate).getDay();
-            isWorkingDay   = prof.config.workingDays.includes(dayOfWeek);
-            isBlockedDate  = (prof.config.blockedDates||[]).includes(selectedDate);
-            
-            if (isWorkingDay && !isBlockedDate) {
-                let slots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
-                
-                if (selectedDate === today) {
-                    const now = new Date();
-                    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                    slots = slots.filter(t => {
-                        const [h, m] = t.split(':').map(Number);
-                        return (h * 60 + m) > currentMinutes;
-                    });
-                }
-                availableSlots = slots;
-            }
+            const isWork = prof.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
+            if (isWork) availableSlots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
+            if (selectedDate === today) { const nowMins = new Date().getHours()*60 + new Date().getMinutes(); availableSlots = availableSlots.filter(t => (Number(t.split(':')[0])*60+Number(t.split(':')[1])) > nowMins); }
         }
 
         return (
             <div className="max-w-md mx-auto p-6 pb-12 fade-in">
                 <div className="text-center mb-8 mt-6">
-                    <div className="w-24 h-24 bg-brand-600 text-white rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">
-                        {prof.business.charAt(0).toUpperCase()}
-                    </div>
+                    {prof.logoBase64 ? <img src={prof.logoBase64} className="w-24 h-24 rounded-4xl mx-auto mb-5 object-cover shadow-xl border-4 border-white" />
+                                     : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{prof.business.charAt(0).toUpperCase()}</div>}
                     <h1 className="text-2xl font-bold text-neutral-950 tracking-tighter">{prof.business}</h1>
-                    <p className="text-brand-600 font-medium">{prof.service || 'Reserva tu cita online'}</p>
+                    <p className="custom-text font-medium">{prof.service || 'Reserva tu cita online'}</p>
                 </div>
 
                 <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-2xl border border-neutral-100 shadow-sm">
-                    <button onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'bg-brand-600 text-white shadow-md' : 'text-neutral-500'}`}>
-                        &#128197; Reservar turno
-                    </button>
-                    <button onClick={() => setClientView('cancel')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'bg-brand-600 text-white shadow-md' : 'text-neutral-500'}`}>
-                        Mis turnos
-                    </button>
+                    <button onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
+                    <button onClick={() => setClientView('cancel')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
                 </div>
 
-                {clientView === 'book' && (
+                {clientView === 'book' ? (
                     <form onSubmit={handleBooking} className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100">
-                        <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-2 ml-1">Selecciona el día</label>
-                            <input type="date" min={today} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm font-medium" required />
-                        </div>
+                        <input type="date" min={today} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
-                            <div className="fade-in">
-                                <label className="block text-xs font-bold text-neutral-500 uppercase mb-2 ml-1">Horarios Disponibles</label>
-                                {isBlockedDate
-                                    ? <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100 text-center">El profesional no atiende esta fecha.</div>
-                                    : !isWorkingDay
-                                    ? <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100 text-center">El profesional no atiende este día.</div>
-                                    : availableSlots.length === 0
-                                    ? <div className="p-4 bg-orange-50 text-orange-600 rounded-2xl text-sm border border-orange-100 text-center">No hay turnos libres para esta fecha o ya pasaron.</div>
-                                    : <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
-                                        {availableSlots.map(time => (
-                                            <button type="button" key={time} onClick={() => setSelectedTime(time)}
-                                                className={`py-2 rounded-xl text-sm font-semibold transition-all ${selectedTime===time ? 'bg-brand-600 text-white shadow-md' : 'bg-neutral-50 text-neutral-700 hover:bg-brand-100 border border-neutral-200'}`}>{time}</button>
-                                        ))}
-                                    </div>}
+                            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 fade-in">
+                                {availableSlots.map(time => (
+                                    <button type="button" key={time} onClick={() => setSelectedTime(time)} className={`py-2 rounded-xl text-sm font-semibold transition-all ${selectedTime===time ? 'custom-bg shadow-md' : 'bg-neutral-50 text-neutral-700 border border-neutral-200'}`}>{time}</button>
+                                ))}
                             </div>
                         )}
                         <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <div>
-                                <label className="block text-xs font-bold text-neutral-500 uppercase mb-1.5 ml-1">Tus Datos</label>
-                                <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 mb-4" required />
-                                <label className="block text-xs font-semibold text-neutral-500 mb-1.5 ml-1">Tu WhatsApp</label>
-                                <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} required />
-                                <p className="text-xs text-neutral-400 mt-1 ml-1">Sin el 0 ni el 15.</p>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-neutral-500 uppercase mb-1.5 ml-1">Motivo <span className="normal-case font-normal text-neutral-400">(opcional)</span></label>
-                                <textarea name="notes" rows="2" placeholder="Ej: dejar equipo para revisar..." className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm resize-none"></textarea>
-                            </div>
-                            <button type="submit" disabled={booking} className={`w-full text-white p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg ${booking ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 active:scale-[0.98]'}`}>
+                            <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
+                            <input name="phoneLocal" type="tel" value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp (sin 0 ni 15)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
+                            <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
                                 {booking ? 'Reservando...' : 'Confirmar Reserva'}
                             </button>
                         </div>
                     </form>
+                ) : (
+                    <CancelView profId={profId} profPhone={prof.phone} setDialog={setDialog} setToast={setToast} onReschedule={() => { setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
                 )}
-
-                {clientView === 'cancel' && <CancelView profId={profId} profPhone={prof.phone} setDialog={setDialog} onReschedule={() => { setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />}
             </div>
         );
     }
 
     // ===================== CANCEL VIEW =====================
-    function CancelView({ profId, profPhone, setDialog, onReschedule }) {
+    function CancelView({ profId, profPhone, setDialog, setToast, onReschedule }) {
         const [searchPrefix, setSearchPrefix] = useState('54');
         const [searchLocal,  setSearchLocal]  = useState('');
         const [myApts, setMyApts]   = useState(null);
@@ -862,113 +841,65 @@
 
         const searchApts = async () => {
             const localClean = searchLocal.replace(/\D/g,'');
-            if (localClean.length < 8) {
-                setDialog({ type:'alert', title:'Atención', message:'Ingresá tu número sin el 0 ni el 15. Ej: 1122334455' });
-                return;
-            }
+            if (localClean.length < 8) { setToast({ type:'error', message:'Ingresá un número válido' }); return; }
             setSearching(true);
             try {
                 const today    = getTodayStr();
                 const fullPhone = buildPhone(searchPrefix, localClean);
-                
-                const snap = await db.collection("appointments")
-                    .where("profId", "==", profId)
-                    .get();
-
+                const snap = await db.collection("appointments").where("profId","==",profId).get();
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .filter(a => a.phone === fullPhone && a.date >= today)
+                    .filter(a => (a.phone === fullPhone || a.phone === localClean) && a.date >= today)
                     .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-                
                 setMyApts(list);
-            } catch (err) {
-                console.error(err);
-                setDialog({ type:'alert', title:'Error', message:'No se pudieron cargar los turnos. Verifica tu conexión.' });
-            } finally { setSearching(false); }
+            } catch (err) { setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { setSearching(false); }
         };
 
         const cancelApt = (apt) => {
             setDialog({
-                type:'confirm', title:'Cancelar Turno',
-                message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs?`,
+                type:'confirm', title:'Cancelar Turno', message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs?`,
                 onConfirm: async () => {
                     setMyApts(prev => prev.filter(a => a.id !== apt.id));
-                    try { await db.collection("appointments").doc(apt.id).delete(); }
-                    catch (err) {
-                        setMyApts(prev => [...prev, apt].sort((a,b) => a.date.localeCompare(b.date)));
-                        setDialog({ type:'alert', title:'Error', message:'No se pudo cancelar. Intenta de nuevo.' });
-                    }
+                    try { await db.collection("appointments").doc(apt.id).delete(); setToast({type:'success', message:'Turno cancelado'}); }
+                    catch (err) { setToast({ type:'error', message:'No se pudo cancelar.' }); }
                 }
             });
         };
 
         const rescheduleApt = (apt) => {
             setDialog({
-                type:'confirm', title:'Reprogramar Turno',
-                message:`Cancelamos el turno del ${formatDate(apt.date)} a las ${apt.time}hs y podés elegir uno nuevo. ¿Continuás?`,
+                type:'confirm', title:'Reprogramar Turno', message:`Cancelamos el turno del ${formatDate(apt.date)} a las ${apt.time}hs para elegir uno nuevo. ¿Continuás?`,
                 onConfirm: async () => {
                     setMyApts(prev => prev.filter(a => a.id !== apt.id));
                     try { await db.collection("appointments").doc(apt.id).delete(); if (onReschedule) onReschedule(); }
-                    catch (err) {
-                        setMyApts(prev => [...prev, apt].sort((a,b) => a.date.localeCompare(b.date)));
-                        setDialog({ type:'alert', title:'Error', message:'No se pudo cancelar. Intenta de nuevo.' });
-                    }
+                    catch (err) { setToast({ type:'error', message:'Error al reprogramar.' }); }
                 }
             });
         };
 
-        const contactProf = (apt) => {
-            const profNum = (profPhone||'').replace(/\D/g,'');
-            if (!profNum) { setDialog({ type:'alert', title:'Sin WhatsApp', message:'El profesional no tiene número de WhatsApp registrado.' }); return; }
-            const msg = encodeURIComponent(`Hola! Te escribo por mi turno del ${formatDate(apt.date)} a las ${apt.time}hs.\nNombre: ${apt.client}`);
-            window.open(`https://wa.me/${profNum}?text=${msg}`, '_blank');
-        };
-
         return (
             <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100 fade-in">
-                <div>
-                    <h3 className="text-lg font-bold mb-1">Mis turnos</h3>
-                    <p className="text-sm text-neutral-500">Ingresá el WhatsApp con el que reservaste para ver tus turnos.</p>
-                </div>
+                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá el WhatsApp con el que reservaste para ver tus turnos.</p></div>
                 <div className="space-y-2">
-                    <PhoneInput namePrefix="searchPrefix" nameLocal="searchLocal"
-                        prefix={searchPrefix} onPrefixChange={setSearchPrefix}
-                        value={searchLocal} onChange={e => setSearchLocal(e.target.value)} placeholder="1122334455" />
-                    <p className="text-xs text-neutral-400 ml-1">Sin el 0 ni el 15.</p>
-                    <button onClick={searchApts} disabled={searching}
-                        className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
-                        {searching
-                            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Buscando...</>
-                            : <><IconSearch /> Buscar mis turnos</>}
+                    <PhoneInput namePrefix="searchPrefix" nameLocal="searchLocal" prefix={searchPrefix} onPrefixChange={setSearchPrefix} value={searchLocal} onChange={e => setSearchLocal(e.target.value)} placeholder="1122334455" />
+                    <button onClick={searchApts} disabled={searching} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
+                        {searching ? 'Buscando...' : <><IconSearch /> Buscar mis turnos</>}
                     </button>
                 </div>
                 {myApts !== null && (
                     <div className="fade-in">
                         {myApts.length === 0 ? (
-                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100">
-                                <span className="text-3xl block mb-2">&#128269;</span>
-                                No encontramos turnos futuros para ese número.<br/>
-                                <span className="text-xs text-neutral-400 mt-1 block">Usá el mismo número y prefijo con el que reservaste.</span>
-                            </div>
+                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos futuros.</div>
                         ) : (
                             <div className="space-y-3">
-                                <p className="text-xs font-semibold text-neutral-500 uppercase">{myApts.length} turno{myApts.length!==1?'s':''} encontrado{myApts.length!==1?'s':''}</p>
                                 {myApts.map(apt => (
                                     <div key={apt.id} className="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-3 fade-in">
                                         <div>
                                             <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1 rounded-xl text-sm border border-brand-100 inline-block mb-1">{formatDate(apt.date)} · {apt.time} hs</div>
                                             <div className="font-semibold text-neutral-800">{apt.client}</div>
-                                            {apt.notes && <div className="text-xs text-neutral-400 mt-1">&#128172; {apt.notes}</div>}
                                         </div>
                                         <div className="flex gap-2 pt-1 border-t border-neutral-200">
-                                            <button onClick={() => contactProf(apt)} className="flex-1 text-emerald-600 bg-emerald-50 border border-emerald-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">
-                                                <IconWhatsapp /> Escribir al profesional
-                                            </button>
-                                            <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">
-                                                &#128197; Reprogramar
-                                            </button>
-                                            <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
-                                                <IconTrash />
-                                            </button>
+                                            <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
+                                            <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
                                         </div>
                                     </div>
                                 ))}
