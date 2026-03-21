@@ -798,33 +798,38 @@
             e.preventDefault(); if (!selectedTime) return;
             setBooking(true);
             try { 
-                // PARCHE DE SEGURIDAD: Nos aseguramos de tener el UID ANTES de guardar el turno
                 let currentUid = auth.currentUser?.uid;
                 if (!currentUid) {
                     const cred = await auth.signInAnonymously();
                     currentUid = cred.user.uid;
+                    // Pausa de medio segundo para asegurar que Firebase sincronizó el usuario
+                    await new Promise(r => setTimeout(r, 500)); 
                 }
                 
                 const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
                 
-                await db.runTransaction(async (tx) => {
-                    const slotDoc = await tx.get(slotRef); if (slotDoc.exists) throw new Error("SLOT_TAKEN");
-                    tx.set(slotRef, { 
-                        profId, 
-                        date: selectedDate, 
-                        time: selectedTime, 
-                        client: e.target.clientName.value, 
-                        phone: '54'+phoneLocal, 
-                        notes: e.target.notes.value||'', 
-                        clientUid: currentUid, 
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                // Usamos un get normal en vez de una transacción
+                const slotDoc = await slotRef.get(); 
+                if (slotDoc.exists) throw new Error("Ese horario ya fue reservado por otra persona.");
+                
+                await slotRef.set({ 
+                    profId, 
+                    date: selectedDate, 
+                    time: selectedTime, 
+                    client: e.target.clientName.value, 
+                    phone: '54'+phoneLocal, 
+                    notes: e.target.notes.value||'', 
+                    clientUid: currentUid,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
             } catch (err) { 
-                console.error(err);
-                setToast({ type:'error', message:'El turno fue tomado o hubo un error.' }); 
+                console.error(err); 
+                // MOSTRAMOS EL MENSAJE DE ERROR EXACTO
+                const errorMsg = err.code === 'permission-denied' ? 'Error de permisos de Firebase.' : err.message;
+                setToast({ type:'error', message: errorMsg }); 
             } finally { setBooking(false); }
         };
 
