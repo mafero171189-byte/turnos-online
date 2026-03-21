@@ -715,8 +715,7 @@
                         setBookedTimes(snap.docs.map(d => d.data().time));
                         setSelectedTime('');
                     } else {
-                        alert("Ocurrió un error al reservar. Intentá de nuevo.");
-                        console.error(err);
+                        alert("Error: " + (err.code || err.message || JSON.stringify(err)));
                     }
                 } finally {
                     setBooking(false);
