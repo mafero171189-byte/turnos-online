@@ -205,16 +205,9 @@
                     setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(console.error); 
                 } else if (u && !u.isAnonymous) { 
                     try {
-                        // Verificamos de forma segura y oculta si el UID del usuario está en la colección de admins
                         const adminDoc = await db.collection("admins").doc(u.uid).get();
-                        if (adminDoc.exists) {
-                            setView('superadmin');
-                        } else {
-                            setView('admin');
-                        }
-                    } catch (error) {
-                        setView('admin');
-                    }
+                        if (adminDoc.exists) { setView('superadmin'); } else { setView('admin'); }
+                    } catch (error) { setView('admin'); }
                 } else { 
                     setView('admin'); 
                 }
@@ -251,7 +244,10 @@
                     setMode('login'); setLoading(false); return;
                 }
                 if (mode === 'login') {
-                    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+                    // Aquí se aplica el estado de la casilla "Recordar sesión"
+                    const persistence = e.target.remember?.checked ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION;
+                    await auth.setPersistence(persistence);
+                    
                     await auth.signInWithEmailAndPassword(e.target.email.value, e.target.password.value);
                     setToast({ type:'success', message: 'Sesión iniciada' });
                 } else {
@@ -324,6 +320,16 @@
                                     >
                                         {showPassword ? <IconEyeOff /> : <IconEye />}
                                     </button>
+                                </div>
+                            )}
+
+                            {/* ESTA ES LA CASILLA DE RECORDAR SESIÓN RESTAURADA */}
+                            {mode === 'login' && (
+                                <div className="flex items-center justify-between">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-neutral-600">
+                                        <input name="remember" type="checkbox" defaultChecked={true} className="w-4 h-4 rounded accent-brand-600" />
+                                        Recordar sesión
+                                    </label>
                                 </div>
                             )}
 
