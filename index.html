@@ -45,7 +45,6 @@
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // --- IMPORTANTE: TUS CREDENCIALES DE FIREBASE ---
     const firebaseConfig = {
         apiKey: "AIzaSyAz0trpUxBYqZ_Ws0TnKjXQLpsSlgf6wqQ",
         authDomain: "turno-facil-53956.firebaseapp.com",
@@ -83,6 +82,8 @@
     const IconShield    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>;
     const IconCard      = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>;
     const IconGlobe     = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
+    const IconEye       = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>;
+    const IconEyeOff    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>;
 
     // --- Componente Toast (Notificación Flotante) ---
     const Toast = ({ toast, onClose }) => {
@@ -198,11 +199,25 @@
         useEffect(() => {
             const params = new URLSearchParams(window.location.search);
             const p = params.get('p');
-            const unsub = auth.onAuthStateChanged((u) => {
+            const unsub = auth.onAuthStateChanged(async (u) => {
                 setUser(u);
-                if (p) { setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(console.error); }
-                else if (u && u.email === 'admin@turnofacilpro.com') { setView('superadmin'); }
-                else   { setView('admin'); }
+                if (p) { 
+                    setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(console.error); 
+                } else if (u && !u.isAnonymous) { 
+                    try {
+                        // Verificamos de forma segura y oculta si el UID del usuario está en la colección de admins
+                        const adminDoc = await db.collection("admins").doc(u.uid).get();
+                        if (adminDoc.exists) {
+                            setView('superadmin');
+                        } else {
+                            setView('admin');
+                        }
+                    } catch (error) {
+                        setView('admin');
+                    }
+                } else { 
+                    setView('admin'); 
+                }
             });
             return () => unsub();
         }, []);
@@ -225,6 +240,7 @@
         const [loading, setLoading]       = useState(false);
         const [phonePrefix, setPhonePrefix] = useState('54');
         const [phoneLocal, setPhoneLocal]   = useState('');
+        const [showPassword, setShowPassword] = useState(false);
 
         const handleSubmit = async (e) => {
             e.preventDefault(); setLoading(true);
@@ -272,8 +288,13 @@
                         <h1 className="text-3xl font-bold text-neutral-950 tracking-tighter">Turno Fácil<span className="text-brand-600">Pro</span></h1>
                     </div>
                     <div className="bg-white p-8 rounded-4xl shadow-2xl shadow-brand-100/50 border border-neutral-100">
-                        <h2 className="text-xl font-semibold mb-1">{mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Creá tu cuenta gratis' : 'Recuperar contraseña'}</h2>
-                        <p className="text-neutral-500 mb-6 text-sm">{mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Probá el sistema completo por 30 días.' : 'Te enviamos un link a tu correo.'}</p>
+                        <h2 className="text-xl font-semibold mb-1">
+                            {mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Registro gratis (30 días)' : 'Recuperar contraseña'}
+                        </h2>
+                        <p className="text-neutral-500 mb-6 text-sm">
+                            {mode==='login' ? 'Ingresá para ver tus turnos.' : mode==='register' ? 'Creá tu cuenta y probá todas las funciones.' : 'Te enviamos un link a tu correo.'}
+                        </p>
+                        
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {mode === 'register' && (<>
                                 <input name="name" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required />
@@ -281,16 +302,40 @@
                                 <input name="service" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required />
                                 <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} required />
                             </>)}
-                            <input name="email" type="email" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo" required />
-                            {mode !== 'forgot' && <input name="password" type="password" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Contraseña" required />}
+                            
+                            <input name="email" type="email" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo electrónico" required />
+                            
+                            {mode !== 'forgot' && (
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400">
+                                        <IconLock />
+                                    </div>
+                                    <input 
+                                        name="password" 
+                                        type={showPassword ? "text" : "password"} 
+                                        className="w-full pl-12 pr-12 py-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" 
+                                        placeholder="Contraseña" 
+                                        required 
+                                    />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowPassword(!showPassword)} 
+                                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-400 hover:text-brand-600 focus:outline-none"
+                                    >
+                                        {showPassword ? <IconEyeOff /> : <IconEye />}
+                                    </button>
+                                </div>
+                            )}
+
                             <button type="submit" disabled={loading} className={`w-full text-white py-4 rounded-2xl font-semibold shadow-lg transition ${loading ? 'bg-brand-400' : 'bg-brand-600 active:scale-[0.98]'}`}>
                                 {loading ? 'Procesando...' : mode==='login' ? 'Ingresar' : mode==='register' ? 'Crear Cuenta' : 'Enviar link'}
                             </button>
                         </form>
+                        
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && <button onClick={() => setMode('register')} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate</button>}
-                            {mode === 'login' && <button onClick={() => setMode('forgot')} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
-                            {mode !== 'login' && <button onClick={() => setMode('login')} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
+                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
+                            {mode === 'login' && <button onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
+                            {mode !== 'login' && <button onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
                     </div>
                 </div>
@@ -304,8 +349,6 @@
         const [search, setSearch] = useState('');
         const [tab, setTab] = useState('licenses'); 
         const [settings, setSettings] = useState({ mpPrice: '5000', paypalPrice: '15' });
-        
-        // Control de los inputs visuales para permitir puntos en los números
         const [mpPriceInput, setMpPriceInput] = useState('');
         const [paypalPriceInput, setPaypalPriceInput] = useState('');
         const [loading, setLoading] = useState(true);
@@ -405,7 +448,6 @@
 
                 {tab === 'settings' && (
                     <div className="fade-in grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-                        
                         {/* CARD: PRECIO MERCADO PAGO */}
                         <div className="bg-green-50 border border-green-200 p-6 rounded-3xl shadow-sm">
                             <h3 className="font-bold text-green-800 flex items-center gap-2 mb-2"><IconCard /> PRECIO EN MERCADO PAGO (ARS)</h3>
@@ -450,23 +492,27 @@
                             {filteredProfs.map(p => {
                                 const daysLeft = getDaysLeft(p.licenseExpiresAt);
                                 const isExpired = daysLeft <= 0;
+                                const daysText = daysLeft === 1 ? '1 día restante' : `${daysLeft} días restantes`;
+                                
                                 return (
-                                <div key={p.id} className={`bg-white p-5 rounded-3xl border ${p.isSuspended ? 'border-red-300 bg-red-50' : isExpired ? 'border-orange-200' : 'border-neutral-200'} shadow-sm relative overflow-hidden`}>
-                                    <div className="mb-4">
-                                        <h3 className="font-bold text-lg text-neutral-900">{p.business}</h3>
-                                        <p className="text-xs text-neutral-500">{p.name} · {p.email}</p>
-                                        <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-emerald-600 text-sm font-bold mt-1 block hover:underline">{p.phone}</a>
+                                <div key={p.id} className={`bg-white p-5 rounded-3xl border ${p.isSuspended ? 'border-red-300' : isExpired ? 'border-orange-200' : 'border-neutral-200'} shadow-sm relative overflow-hidden`}>
+                                    <div className="mb-1">
+                                        <h3 className="text-lg font-bold text-neutral-900">{p.business}</h3>
+                                        <p className="text-sm text-neutral-500">{p.name} · {p.email}</p>
+                                        <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-sm font-bold text-emerald-600 mt-1 block hover:underline">{p.phone}</a>
                                     </div>
-                                    <div className="flex gap-2 mb-4">
-                                        {p.isSuspended ? <span className="bg-red-100 text-red-700 px-2.5 py-1 rounded-lg text-xs font-bold">Suspendido</span> :
-                                         isExpired ? <span className="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold">Vencido</span> :
-                                         p.subscriptionStatus === 'trial' ? <span className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-bold">Prueba ({daysLeft} días)</span> :
-                                         <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-xs font-bold">Pagado ({daysLeft} días)</span>}
+                                    <div className="mt-3">
+                                        {p.isSuspended ? <span className="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-lg text-xs font-bold">Suspendido</span> :
+                                         isExpired ? <span className="inline-block bg-orange-100 text-orange-800 px-3 py-1 rounded-lg text-xs font-bold">Vencido</span> :
+                                         p.subscriptionStatus === 'trial' ? <span className="inline-block bg-amber-100 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold">Prueba ({daysText})</span> :
+                                         <span className="inline-block bg-emerald-100 text-emerald-800 px-3 py-1 rounded-lg text-xs font-bold">Pagado ({daysText})</span>}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-neutral-100/50">
-                                        <button onClick={() => renewLicense(p)} className="col-span-2 bg-neutral-900 text-white py-2 rounded-xl text-xs font-bold hover:bg-neutral-800 transition">Renovar (+30 días)</button>
-                                        <button onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2 rounded-xl text-xs font-bold hover:bg-orange-200 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
-                                        <button onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2 rounded-xl text-xs font-bold hover:bg-red-200 transition">Borrar Físico</button>
+                                    
+                                    <button onClick={() => renewLicense(p)} className="w-full bg-neutral-900 text-white py-2.5 rounded-xl text-sm font-bold mt-4 mb-2 hover:bg-neutral-800 active:scale-95 transition">Renovar (+30 días)</button>
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-200 active:scale-95 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
+                                        <button onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2.5 rounded-xl text-sm font-bold hover:bg-red-200 active:scale-95 transition">Borrar Físico</button>
                                     </div>
                                 </div>
                             )})}
@@ -491,7 +537,6 @@
         const mpLink = "https://mpago.li/1wHMvGg";
         const paypalLink = `https://paypal.me/MatiasRodriguez1789/${settings.paypalPrice}usd`;
 
-        // Damos formato visual al precio de Mercado Pago para el botón
         const formattedMpPrice = Number(settings.mpPrice || 5000).toLocaleString('es-AR');
 
         return (
@@ -754,7 +799,16 @@
                 const slotRef = db.collection("appointments").doc(slotId);
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef); if (slotDoc.exists) throw new Error("SLOT_TAKEN");
-                    tx.set(slotRef, { profId, date: selectedDate, time: selectedTime, client: e.target.clientName.value, phone: '54'+phoneLocal, notes: e.target.notes.value||'', createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+                    tx.set(slotRef, { 
+                        profId, 
+                        date: selectedDate, 
+                        time: selectedTime, 
+                        client: e.target.clientName.value, 
+                        phone: '54'+phoneLocal, 
+                        notes: e.target.notes.value||'', 
+                        clientUid: auth.currentUser.uid, // Parche de seguridad
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
                 });
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
             } catch (err) { setToast({ type:'error', message:'El turno fue tomado o hubo un error.' }); } finally { setBooking(false); }
