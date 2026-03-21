@@ -67,6 +67,44 @@
     const IconSearch   = () => <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>;
     const IconTrash    = () => <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>;
 
+    // Códigos de país para WhatsApp
+    const COUNTRY_CODES = [
+        { code:'54',  flag:'🇦🇷', label:'AR' },
+        { code:'598', flag:'🇺🇾', label:'UY' },
+        { code:'56',  flag:'🇨🇱', label:'CL' },
+        { code:'55',  flag:'🇧🇷', label:'BR' },
+        { code:'595', flag:'🇵🇾', label:'PY' },
+        { code:'591', flag:'🇧🇴', label:'BO' },
+        { code:'57',  flag:'🇨🇴', label:'CO' },
+        { code:'51',  flag:'🇵🇪', label:'PE' },
+        { code:'34',  flag:'🇪🇸', label:'ES' },
+        { code:'1',   flag:'🇺🇸', label:'US' },
+    ];
+    // Combina prefijo + número local → dígitos puros (ej: "5491122334455")
+    const buildPhone = (prefix, local) => prefix + local.replace(/\D/g,'');
+
+    // Input de WhatsApp con selector de prefijo
+    const PhoneInput = ({ namePrefix='phonePrefix', nameLocal='phoneLocal',
+                          prefix, onPrefixChange, value, onChange,
+                          placeholder='1122334455', required=false, size='md' }) => {
+        const pad = size === 'sm' ? 'px-2 py-2 text-xs' : 'px-3 py-4 text-sm';
+        const inp = size === 'sm' ? 'p-2 text-sm' : 'p-4 text-sm';
+        return (
+            <div class="flex">
+                <select name={namePrefix} value={prefix} onChange={e => onPrefixChange(e.target.value)}
+                    class={`bg-neutral-50 border border-neutral-200 border-r-0 rounded-l-2xl ${pad} outline-none focus:border-brand-600 font-medium text-neutral-600`}>
+                    {COUNTRY_CODES.map(c => (
+                        <option key={c.code} value={c.code}>{c.flag} +{c.code}</option>
+                    ))}
+                </select>
+                <input name={nameLocal} type="tel" value={value} onChange={onChange}
+                    placeholder={placeholder}
+                    class={`flex-1 ${inp} bg-neutral-50 border border-neutral-200 rounded-r-2xl outline-none focus:border-brand-600`}
+                    required={required} />
+            </div>
+        );
+    };
+
     // Helpers
     const generateTimeSlots = (start, end, durationMins) => {
         const slots = [];
@@ -168,31 +206,51 @@
     }
 
     function AuthScreen({ setDialog }) {
-        const [isLogin, setIsLogin] = useState(true);
+        const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
         const [loading, setLoading] = useState(false);
         const [error, setError] = useState('');
+        const [success, setSuccess] = useState('');
+        const [phonePrefix, setPhonePrefix] = useState('54');
+        const [phoneLocal, setPhoneLocal] = useState('');
 
         const handleSubmit = async (e) => {
-            e.preventDefault(); setError(''); setLoading(true);
+            e.preventDefault(); setError(''); setSuccess(''); setLoading(true);
             try {
-                if (isLogin) {
+                if (mode === 'forgot') {
+                    await auth.sendPasswordResetEmail(e.target.email.value);
+                    setSuccess('¡Listo! Revisá tu correo para restablecer la contraseña.');
+                    setLoading(false); return;
+                }
+                if (mode === 'login') {
+                    const persistence = e.target.remember?.checked
+                        ? firebase.auth.Auth.Persistence.LOCAL
+                        : firebase.auth.Auth.Persistence.SESSION;
+                    await auth.setPersistence(persistence);
                     await auth.signInWithEmailAndPassword(e.target.email.value, e.target.password.value);
                 } else {
-                    const phone = e.target.phone.value.replace(/\D/g,'');
-                    if (phone.length < 8 || phone.length > 15) { 
-                        setError('Teléfono inválido. Asegurate de incluir el código de área.'); 
-                        setLoading(false); return; 
+                    const fullPhone = buildPhone(phonePrefix, phoneLocal);
+                    if (fullPhone.length < 10 || fullPhone.length > 17) {
+                        setError('Teléfono inválido. Ingresá el número sin el 0 ni el 15.'); setLoading(false); return;
                     }
                     const res = await auth.createUserWithEmailAndPassword(e.target.email.value, e.target.password.value);
                     await db.collection("professionals").doc(res.user.uid).set({
                         name: e.target.name.value, business: e.target.business.value,
-                        service: e.target.service.value, phone, email: e.target.email.value,
+                        service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
                         waTemplate: DEFAULT_WA_TEMPLATE,
                         config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, blockedDates:[] }
                     });
                 }
-            } catch (err) { setError('Error: Verificá tus datos o intentá de nuevo.'); }
-            finally { setLoading(false); }
+            } catch (err) {
+                const msgs = {
+                    'auth/user-not-found': 'No existe una cuenta con ese correo.',
+                    'auth/wrong-password': 'Contraseña incorrecta.',
+                    'auth/email-already-in-use': 'Ese correo ya está registrado.',
+                    'auth/invalid-email': 'El correo no es válido.',
+                    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+                    'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos.',
+                };
+                setError(msgs[err.code] || 'Ocurrió un error. Intentá de nuevo.');
+            } finally { setLoading(false); }
         };
 
         return (
@@ -203,26 +261,59 @@
                         <h1 class="text-3xl font-bold text-neutral-950 tracking-tighter">Turno Facil<span class="text-brand-600">Pro</span></h1>
                     </div>
                     <div class="bg-white p-8 rounded-4xl shadow-2xl shadow-brand-100/50 border border-neutral-100">
-                        <h2 class="text-xl font-semibold mb-1">{isLogin ? '¡Hola de nuevo!' : 'Creá tu cuenta'}</h2>
-                        <p class="text-neutral-500 mb-8 text-sm">{isLogin ? 'Ingresá para ver tus turnos.' : 'Configurá tu panel profesional.'}</p>
-                        {error && <div class="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-6 border border-red-100">{error}</div>}
+                        <h2 class="text-xl font-semibold mb-1">
+                            {mode === 'login' ? '¡Hola de nuevo!' : mode === 'register' ? 'Creá tu cuenta' : 'Recuperar contraseña'}
+                        </h2>
+                        <p class="text-neutral-500 mb-6 text-sm">
+                            {mode === 'login' ? 'Ingresá para ver tus turnos.' : mode === 'register' ? 'Configurá tu panel profesional.' : 'Te enviamos un link a tu correo.'}
+                        </p>
+                        {error  && <div class="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 border border-red-100">{error}</div>}
+                        {success && <div class="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-sm mb-4 border border-emerald-100">{success}</div>}
                         <form onSubmit={handleSubmit} class="space-y-4">
-                            {!isLogin && (<>
-                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconUser /></div><input name="name" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required /></div>
-                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconBriefcase /></div><input name="business" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required /></div>
-                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconSettings /></div><input name="service" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required /></div>
-                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconPhone /></div><input name="phone" type="tel" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="WhatsApp (con cód. área Ej: 1122334455)" required /></div>
+                            {mode === 'register' && (<>
+                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconUser /></div>
+                                    <input name="name" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required /></div>
+                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconBriefcase /></div>
+                                    <input name="business" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required /></div>
+                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconSettings /></div>
+                                    <input name="service" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required /></div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-neutral-500 mb-1.5 ml-1">WhatsApp profesional</label>
+                                    <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} placeholder="1122334455" required />
+                                    <p class="text-xs text-neutral-400 mt-1 ml-1">Sin el 0 ni el 15. Ej: 1122334455</p>
+                                </div>
                             </>)}
-                            <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconMail /></div><input name="email" type="email" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo electrónico" required /></div>
-                            <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconLock /></div><input name="password" type="password" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Contraseña" required /></div>
+                            <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconMail /></div>
+                                <input name="email" type="email" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Correo electrónico" required /></div>
+                            {mode !== 'forgot' && (
+                                <div class="relative"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400"><IconLock /></div>
+                                    <input name="password" type="password" class="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Contraseña" required /></div>
+                            )}
+                            {mode === 'login' && (
+                                <div class="flex items-center justify-between">
+                                    <label class="flex items-center gap-2 cursor-pointer text-sm text-neutral-600">
+                                        <input name="remember" type="checkbox" class="w-4 h-4 rounded accent-brand-600" />
+                                        Recordar sesión
+                                    </label>
+                                    <button type="button" onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                                        class="text-brand-600 text-sm font-medium hover:underline">¿Olvidaste tu contraseña?</button>
+                                </div>
+                            )}
                             <button type="submit" disabled={loading} class={`w-full text-white py-4 rounded-2xl font-semibold shadow-lg transition ${loading ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 active:scale-[0.98]'}`}>
-                                {loading ? 'Procesando...' : (isLogin ? 'Ingresar' : 'Crear Cuenta')}
+                                {loading ? 'Procesando...' : mode === 'login' ? 'Ingresar' : mode === 'register' ? 'Crear Cuenta' : 'Enviar link de recuperación'}
                             </button>
                         </form>
-                        <div class="mt-6 text-center">
-                            <button onClick={() => {setIsLogin(!isLogin); setError('');}} class="text-brand-600 text-sm font-medium">
-                                {isLogin ? '¿No tenés cuenta? Registrate acá' : '¿Ya tenés cuenta? Iniciá sesión'}
-                            </button>
+                        <div class="mt-6 text-center space-y-2">
+                            {mode !== 'register' && (
+                                <button onClick={() => { setMode('register'); setError(''); setSuccess(''); }} class="block w-full text-brand-600 text-sm font-medium">
+                                    ¿No tenés cuenta? <span class="underline">Registrate acá</span>
+                                </button>
+                            )}
+                            {mode !== 'login' && (
+                                <button onClick={() => { setMode('login'); setError(''); setSuccess(''); }} class="block w-full text-neutral-500 text-sm">
+                                    ← Volver al inicio de sesión
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -254,10 +345,18 @@
                 (err) => { console.error(err); setLoading(false); setProfile(null); }
             );
             const today = getTodayStr();
+            // Usamos solo where("profId") para evitar índices compuestos en Firestore
+            // y filtramos/ordenamos del lado del cliente para garantizar tiempo real
             const unsubApts = db.collection("appointments")
-                .where("profId","==",user.uid).where("date",">=",today).orderBy("date","asc")
+                .where("profId","==",user.uid)
                 .onSnapshot((snap) => {
-                    const newList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const newList = all
+                        .filter(a => a.date >= today)
+                        .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+                    const pastList = all
+                        .filter(a => a.date < today)
+                        .sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
                     if (initialized.current) {
                         newList.forEach(apt => {
                             if (!prevAptIds.current.has(apt.id)) {
@@ -270,12 +369,9 @@
                     prevAptIds.current = new Set(newList.map(a => a.id));
                     initialized.current = true;
                     setApts(newList);
+                    setPastApts(pastList);
                 }, (err) => { console.error(err); setApts([]); });
-            const unsubPast = db.collection("appointments")
-                .where("profId","==",user.uid).where("date","<",today).orderBy("date","desc")
-                .onSnapshot((snap) => { setPastApts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); },
-                (err) => { console.error(err); setPastApts([]); });
-            return () => { unsubProf(); unsubApts(); unsubPast(); };
+            return () => { unsubProf(); unsubApts(); };
         }, [user]);
 
         // Returns condicionales DESPUÉS de todos los hooks
@@ -297,7 +393,13 @@
                 title: 'Eliminar Turno',
                 message: `¿Estás seguro de eliminar el turno de ${a.client}?`,
                 onConfirm: async () => {
-                    await db.collection("appointments").doc(a.id).delete();
+                    setApts(prev => prev.filter(apt => apt.id !== a.id));
+                    try {
+                        await db.collection("appointments").doc(a.id).delete();
+                    } catch (err) {
+                        setApts(prev => [...prev, a].sort((x,y) => x.date.localeCompare(y.date) || x.time.localeCompare(y.time)));
+                        setDialog({ type: 'alert', title: 'Error', message: 'No se pudo eliminar el turno. Intentá de nuevo.' });
+                    }
                 }
             });
         };
@@ -306,14 +408,16 @@
             e.preventDefault();
             const f = new FormData(e.target);
             const workingDays = DAYS.filter(d => f.get(`day_${d.id}`)).map(d => d.id);
-            const phoneClean = (f.get('phone')||'').replace(/\D/g,'');
-            if (phoneClean.length < 8 || phoneClean.length > 15) { 
-                setDialog({ type: 'alert', title: 'Error', message: 'Teléfono inválido. Revisá el formato.'}); 
-                return; 
+            const prefix = f.get('phonePrefix') || '54';
+            const local  = (f.get('phoneLocal') || '').replace(/\D/g,'');
+            const fullPhone = prefix + local;
+            if (local.length < 8 || fullPhone.length > 17) {
+                setDialog({ type: 'alert', title: 'Error', message: 'Teléfono inválido. Ingresá el número sin el 0 ni el 15.'});
+                return;
             }
             await db.collection("professionals").doc(user.uid).update({
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
-                phone: phoneClean, waTemplate: f.get('waTemplate'),
+                phone: fullPhone, waTemplate: f.get('waTemplate'),
                 config: {
                     workingDays: workingDays.length > 0 ? workingDays : profile.config?.workingDays,
                     startTime: f.get('startTime'), endTime: f.get('endTime'),
@@ -431,7 +535,18 @@
                                         <div><label class="block text-xs font-bold text-neutral-500 mb-1.5 ml-1">Tu Nombre</label><input name="name" defaultValue={profile.name} class="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" required /></div>
                                         <div><label class="block text-xs font-bold text-neutral-500 mb-1.5 ml-1">Nombre del Negocio</label><input name="business" defaultValue={profile.business} class="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" required /></div>
                                         <div><label class="block text-xs font-bold text-neutral-500 mb-1.5 ml-1">Servicio</label><input name="service" defaultValue={profile.service||''} class="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" required /></div>
-                                        <div><label class="block text-xs font-bold text-neutral-500 mb-1.5 ml-1">WhatsApp</label><input name="phone" defaultValue={profile.phone} class="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" required /></div>
+                                        <div>
+                                            <label class="block text-xs font-bold text-neutral-500 mb-1.5 ml-1">WhatsApp</label>
+                                            <PhoneInput
+                                                namePrefix="phonePrefix" nameLocal="phoneLocal"
+                                                prefix={profile.phone ? (COUNTRY_CODES.find(c => profile.phone.startsWith(c.code))?.code || '54') : '54'}
+                                                onPrefixChange={() => {}}
+                                                value={profile.phone ? profile.phone.replace(/^\d{1,3}/, m => { const c = COUNTRY_CODES.find(c => profile.phone.startsWith(c.code)); return c ? profile.phone.slice(c.code.length) : profile.phone; }).replace(/^\d{1,4}/,'') : profile.phone || ''}
+                                                onChange={() => {}}
+                                                size="sm"
+                                            />
+                                            <p class="text-xs text-neutral-400 mt-1 ml-1">Sin el 0 ni el 15. Ej: 1122334455</p>
+                                        </div>
                                     </div>
                                 </div>
                                 <div>
@@ -514,6 +629,8 @@
         const [bookedTimes, setBookedTimes] = useState([]);
         const [booking, setBooking] = useState(false);
         const [clientView, setClientView] = useState('book');
+        const [clientPhonePrefix, setClientPhonePrefix] = useState('54');
+        const [clientPhoneLocal, setClientPhoneLocal] = useState('');
 
         useEffect(() => {
             db.collection("professionals").doc(profId).get().then(d => {
@@ -542,10 +659,10 @@
                 return;
             }
             if (booking) return;
-            const phoneClean = e.target.phone.value.replace(/\D/g,'');
-            if (phoneClean.length < 8 || phoneClean.length > 15) { 
-                setDialog({ type: 'alert', title: 'Datos incorrectos', message: 'Ingresá un WhatsApp válido (recordá incluir el código de área).' });
-                return; 
+            const fullPhone = buildPhone(clientPhonePrefix, clientPhoneLocal);
+            if (clientPhoneLocal.replace(/\D/g,'').length < 8 || fullPhone.length > 17) {
+                setDialog({ type: 'alert', title: 'Datos incorrectos', message: 'Ingresá un WhatsApp válido sin el 0 ni el 15. Ej: 1122334455' });
+                return;
             }
             setBooking(true);
             try {
@@ -562,7 +679,7 @@
                     if (slotDoc.exists) throw new Error("SLOT_TAKEN");
                     tx.set(slotRef, {
                         profId, date: selectedDate, time: selectedTime,
-                        client: e.target.clientName.value, phone: phoneClean,
+                        client: e.target.clientName.value, phone: fullPhone,
                         notes: e.target.notes.value.trim() || '',
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
@@ -655,7 +772,14 @@
                             <div>
                                 <label class="block text-xs font-bold text-neutral-500 uppercase mb-1.5 ml-1">Tus Datos</label>
                                 <input name="clientName" placeholder="Nombre y apellido" class="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 mb-4" required />
-                                <input name="phone" type="tel" placeholder="Tu WhatsApp (Ej: 1122334455, con cód. de área)" class="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600" required />
+                                <label class="block text-xs font-semibold text-neutral-500 mb-1.5 ml-1">Tu WhatsApp</label>
+                                <PhoneInput
+                                    namePrefix="clientPhonePrefix" nameLocal="clientPhoneLocal"
+                                    prefix={clientPhonePrefix} onPrefixChange={setClientPhonePrefix}
+                                    value={clientPhoneLocal} onChange={e => setClientPhoneLocal(e.target.value)}
+                                    placeholder="1122334455" required
+                                />
+                                <p class="text-xs text-neutral-400 mt-1 ml-1">Sin el 0 ni el 15.</p>
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-neutral-500 uppercase mb-1.5 ml-1">Motivo <span class="normal-case font-normal text-neutral-400">(opcional)</span></label>
@@ -674,40 +798,30 @@
     }
 
     function CancelView({ profId, profPhone, setDialog, onReschedule }) {
-        const [phone, setPhone] = useState('');
+        const [searchPrefix, setSearchPrefix] = useState('54');
+        const [searchLocal, setSearchLocal] = useState('');
         const [myApts, setMyApts] = useState(null);
         const [searching, setSearching] = useState(false);
 
         const searchApts = async () => {
-            const clean = phone.replace(/\D/g,'');
-            if (clean.length < 8) {
-                setDialog({ type: 'alert', title: 'Atención', message: 'Ingresá tu número de WhatsApp válido. Recordá incluir el código de área.' });
+            const localClean = searchLocal.replace(/\D/g,'');
+            const fullPhone = buildPhone(searchPrefix, localClean);
+            if (localClean.length < 8) {
+                setDialog({ type: 'alert', title: 'Atención', message: 'Ingresá tu número sin el 0 ni el 15. Ej: 1122334455' });
                 return;
             }
             setSearching(true);
             try {
                 const today = getTodayStr();
-                // Busca solo por profId (evita requerir índice compuesto en Firestore)
-                // y filtra por teléfono del lado del cliente
                 const snap = await db.collection("appointments")
                     .where("profId","==",profId)
-                    .orderBy("date","asc")
                     .get();
-                const list = snap.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
-                    .filter(a => a.phone === clean && a.date >= today);
+                const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                // Intenta con número completo (nuevo formato) o solo local (compatibilidad)
+                const list = all
+                    .filter(a => (a.phone === fullPhone || a.phone === localClean) && a.date >= today)
+                    .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
                 setMyApts(list);
-                if (list.length === 0) {
-                    // Intento alternativo: buscar sin ordenamiento por si hay problemas de índice
-                    const snap2 = await db.collection("appointments")
-                        .where("profId","==",profId)
-                        .get();
-                    const list2 = snap2.docs
-                        .map(d => ({ id: d.id, ...d.data() }))
-                        .filter(a => a.phone === clean && a.date >= today)
-                        .sort((a,b) => a.date.localeCompare(b.date));
-                    setMyApts(list2);
-                }
             } catch (err) {
                 console.error('Error buscando turnos:', err);
                 setDialog({ type: 'alert', title: 'Error de búsqueda', message: 'No se pudieron cargar los turnos. Verificá tu conexión e intentá de nuevo.' });
@@ -722,11 +836,13 @@
                 title: 'Cancelar Turno',
                 message: `¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs?`,
                 onConfirm: async () => {
+                    // Optimistic: eliminar de UI antes del request
+                    setMyApts(prev => prev.filter(a => a.id !== apt.id));
                     try {
                         await db.collection("appointments").doc(apt.id).delete();
-                        setMyApts(prev => prev.filter(a => a.id !== apt.id));
-                        setDialog({ type: 'alert', title: 'Turno cancelado', message: 'Tu turno fue cancelado exitosamente.' });
                     } catch (err) {
+                        // Revertir si falla
+                        setMyApts(prev => [...prev, apt].sort((a,b) => a.date.localeCompare(b.date)));
                         setDialog({ type: 'alert', title: 'Error', message: 'No se pudo cancelar el turno. Intentá de nuevo.' });
                     }
                 }
@@ -739,11 +855,13 @@
                 title: 'Reprogramar Turno',
                 message: `Para reprogramar, primero cancelamos el turno del ${formatDate(apt.date)} a las ${apt.time}hs y luego podés elegir una nueva fecha. ¿Continuás?`,
                 onConfirm: async () => {
+                    // Optimistic: eliminar de UI antes del request
+                    setMyApts(prev => prev.filter(a => a.id !== apt.id));
                     try {
                         await db.collection("appointments").doc(apt.id).delete();
-                        setMyApts(prev => prev.filter(a => a.id !== apt.id));
                         if (onReschedule) onReschedule();
                     } catch (err) {
+                        setMyApts(prev => [...prev, apt].sort((a,b) => a.date.localeCompare(b.date)));
                         setDialog({ type: 'alert', title: 'Error', message: 'No se pudo cancelar el turno. Intentá de nuevo.' });
                     }
                 }
@@ -764,19 +882,21 @@
             <div class="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100 fade-in">
                 <div>
                     <h3 class="text-lg font-bold mb-1">Mis turnos</h3>
-                    <p class="text-sm text-neutral-500">Ingresá el WhatsApp con el que reservaste (con código de área) para ver tus turnos.</p>
+                    <p class="text-sm text-neutral-500">Ingresá el WhatsApp con el que reservaste para ver tus turnos.</p>
                 </div>
-                <div class="flex gap-2">
-                    <input
-                        type="tel"
-                        placeholder="Ej: 1122334455"
-                        value={phone}
-                        onChange={e => setPhone(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && searchApts()}
-                        class="flex-1 p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm"
+                <div class="space-y-2">
+                    <PhoneInput
+                        namePrefix="searchPrefix" nameLocal="searchLocal"
+                        prefix={searchPrefix} onPrefixChange={setSearchPrefix}
+                        value={searchLocal} onChange={e => setSearchLocal(e.target.value)}
+                        placeholder="1122334455"
                     />
-                    <button onClick={searchApts} disabled={searching} class="bg-brand-600 text-white px-5 rounded-2xl font-semibold active:scale-95 transition flex items-center gap-2">
-                        {searching ? <div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <><IconSearch /><span class="hidden sm:inline text-sm">Buscar</span></>}
+                    <p class="text-xs text-neutral-400 ml-1">Sin el 0 ni el 15.</p>
+                    <button onClick={searchApts} disabled={searching}
+                        class="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
+                        {searching
+                            ? <><div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Buscando...</>
+                            : <><IconSearch /> Buscar mis turnos</>}
                     </button>
                 </div>
 
@@ -786,19 +906,17 @@
                             <div class="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100">
                                 <span class="text-3xl block mb-2">&#128269;</span>
                                 No encontramos turnos futuros para ese número.<br/>
-                                <span class="text-xs text-neutral-400 mt-1 block">Asegurate de ingresar el mismo número con el que reservaste.</span>
+                                <span class="text-xs text-neutral-400 mt-1 block">Asegurate de usar el mismo número y prefijo con el que reservaste.</span>
                             </div>
                         ) : (
                             <div class="space-y-3">
                                 <p class="text-xs font-semibold text-neutral-500 uppercase">{myApts.length} turno{myApts.length !== 1 ? 's' : ''} encontrado{myApts.length !== 1 ? 's' : ''}</p>
                                 {myApts.map(apt => (
-                                    <div key={apt.id} class="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-3">
-                                        <div class="flex items-start justify-between">
-                                            <div>
-                                                <div class="bg-brand-50 text-brand-700 font-bold px-3 py-1 rounded-xl text-sm border border-brand-100 inline-block mb-1">{formatDate(apt.date)} · {apt.time} hs</div>
-                                                <div class="font-semibold text-neutral-800">{apt.client}</div>
-                                                {apt.notes && <div class="text-xs text-neutral-400 mt-1">&#128172; {apt.notes}</div>}
-                                            </div>
+                                    <div key={apt.id} class="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-3 fade-in">
+                                        <div>
+                                            <div class="bg-brand-50 text-brand-700 font-bold px-3 py-1 rounded-xl text-sm border border-brand-100 inline-block mb-1">{formatDate(apt.date)} · {apt.time} hs</div>
+                                            <div class="font-semibold text-neutral-800">{apt.client}</div>
+                                            {apt.notes && <div class="text-xs text-neutral-400 mt-1">&#128172; {apt.notes}</div>}
                                         </div>
                                         <div class="flex gap-2 pt-1 border-t border-neutral-200">
                                             <button onClick={() => contactProf(apt)} class="flex-1 text-emerald-600 bg-emerald-50 border border-emerald-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">
