@@ -703,9 +703,17 @@
                                     <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
                                     <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
                                     {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
-                                    <div className="mt-5 pt-4 border-t border-neutral-100 flex justify-between items-center">
-                                        <button onClick={async () => { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); }} className="text-red-400 text-xs font-medium flex gap-1"><IconTrash /> Eliminar</button>
+                                    
+                                    {/* ACA ESTÁ EL BOTÓN DE WHATSAPP NUEVO */}
+                                    <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
+                                        <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
+                                            <IconWhatsapp /> Contactar
+                                        </a>
+                                        <button onClick={async () => { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                                            <IconTrash />
+                                        </button>
                                     </div>
+
                                 </div>
                             ))}
                         </div>
@@ -741,6 +749,13 @@
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Negocio</label><input name="business" defaultValue={profile.business} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label><input name="service" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" /></div>
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix} value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required /></div>
+                                    
+                                    {/* ACA ESTA EL CUADRO DE MENSAJE AUTOMATICO DE WHATSAPP */}
+                                    <div className="sm:col-span-2 mt-2">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Mensaje Automático de WhatsApp</label>
+                                        <textarea name="waTemplate" defaultValue={profile.waTemplate || DEFAULT_WA_TEMPLATE} rows="2" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" placeholder="Ej: Hola {cliente}, te confirmo tu turno para el {fecha} a las {hora} en {negocio}."></textarea>
+                                        <p className="text-[10px] text-neutral-400 mt-1">Variables automáticas permitidas: {cliente}, {fecha}, {hora}, {negocio}</p>
+                                    </div>
                                 </div>
                                 <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
                                     <div className="flex flex-wrap gap-2 mb-4">
@@ -807,11 +822,9 @@
                 const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
                 
-                // Usamos un get normal en vez de una transacción
                 const slotDoc = await slotRef.get(); 
                 if (slotDoc.exists) throw new Error("Ese horario ya fue reservado por otra persona.");
                 
-                // NOTA: Acá está el parche de seguridad para el input "notas" opcional
                 await slotRef.set({ 
                     profId, 
                     date: selectedDate, 
