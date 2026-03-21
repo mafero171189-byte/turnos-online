@@ -264,35 +264,53 @@
             const [newBlockDate, setNewBlockDate] = useState('');
 
             useEffect(() => {
-                const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot((d) => {
-                    if (d.exists) setProfile(d.data());
-                    setLoading(false);
-                });
+                // ✅ Con manejo de error para no quedar cargando infinito
+                const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
+                    (d) => {
+                        setProfile(d.exists ? d.data() : null);
+                        setLoading(false);
+                    },
+                    (err) => {
+                        console.error("Error cargando perfil:", err);
+                        setLoading(false);
+                    }
+                );
 
                 const today = getTodayStr();
 
-                // FIX: Solo turnos futuros (>= hoy) en el panel principal
                 const unsubApts = db.collection("appointments")
                     .where("profId", "==", user.uid)
                     .where("date", ">=", today)
                     .orderBy("date", "asc")
-                    .onSnapshot((snap) => {
-                        setApts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    });
+                    .onSnapshot(
+                        (snap) => { setApts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); },
+                        (err) => { console.error("Error turnos futuros:", err); setApts([]); }
+                    );
 
-                // Historial: turnos pasados (< hoy)
                 const unsubPast = db.collection("appointments")
                     .where("profId", "==", user.uid)
                     .where("date", "<", today)
                     .orderBy("date", "desc")
-                    .onSnapshot((snap) => {
-                        setPastApts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                    });
+                    .onSnapshot(
+                        (snap) => { setPastApts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); },
+                        (err) => { console.error("Error historial:", err); setPastApts([]); }
+                    );
 
                 return () => { unsubProf(); unsubApts(); unsubPast(); };
             }, [user]);
 
-            if (loading || !profile) return <div class="flex h-screen items-center justify-center bg-brand-50"><div class="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div></div>;
+            if (loading) return <div class="flex h-screen items-center justify-center bg-brand-50"><div class="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+            if (!profile) return (
+                <div class="flex h-screen items-center justify-center bg-brand-50 p-6">
+                    <div class="bg-white p-10 rounded-4xl shadow-xl text-center max-w-sm border border-neutral-100">
+                        <span class="text-5xl block mb-4">⚠️</span>
+                        <h2 class="text-xl font-bold text-neutral-900 mb-2">No se encontró tu perfil</h2>
+                        <p class="text-neutral-500 text-sm mb-6">Puede que tu cuenta no esté configurada. Cerrá sesión e intentá de nuevo.</p>
+                        <button onClick={() => auth.signOut()} class="bg-brand-600 text-white px-6 py-3 rounded-2xl font-semibold text-sm">Cerrar Sesión</button>
+                    </div>
+                </div>
+            );
 
             const shareUrl = window.location.origin + window.location.pathname + "?p=" + user.uid;
 
