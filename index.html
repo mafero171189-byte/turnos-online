@@ -49,6 +49,8 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
+    // Persistencia LOCAL: la sesión sobrevive refrescos y cierres de pestaña
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(console.error);
 
     // Íconos SVG
     const IconUser     = () => <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>;
@@ -292,7 +294,7 @@
                             {mode === 'login' && (
                                 <div class="flex items-center justify-between">
                                     <label class="flex items-center gap-2 cursor-pointer text-sm text-neutral-600">
-                                        <input name="remember" type="checkbox" class="w-4 h-4 rounded accent-brand-600" />
+                                        <input name="remember" type="checkbox" defaultChecked={true} class="w-4 h-4 rounded accent-brand-600" />
                                         Recordar sesión
                                     </label>
                                     <button type="button" onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
@@ -344,12 +346,12 @@
                 (d) => { if (d.exists) setProfile(d.data()); else setProfile(null); setLoading(false); },
                 (err) => { console.error(err); setLoading(false); setProfile(null); }
             );
-            const today = getTodayStr();
             // Usamos solo where("profId") para evitar índices compuestos en Firestore
             // y filtramos/ordenamos del lado del cliente para garantizar tiempo real
             const unsubApts = db.collection("appointments")
                 .where("profId","==",user.uid)
                 .onSnapshot((snap) => {
+                    const today = getTodayStr(); // recalcular siempre para no quedar desactualizado
                     const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     const newList = all
                         .filter(a => a.date >= today)
