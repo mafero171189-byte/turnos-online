@@ -126,6 +126,7 @@
             .replace('{cliente}', apt.client).replace('{fecha}', formatDate(apt.date))
             .replace('{hora}', apt.time).replace('{negocio}', businessName);
 
+    // --- Notificaciones y Sonido ---
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) return false;
         if (Notification.permission === 'granted') return true;
@@ -140,6 +141,36 @@
             }
         } catch (err) {
             console.warn('Notificaciones nativas bloqueadas por el dispositivo.');
+        }
+    };
+
+    // Generador de sonido sintético (no requiere archivos externos)
+    const playNotificationSound = () => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            const playTone = (freq, delay, duration) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine'; // Tono suave
+                osc.frequency.value = freq;
+                
+                gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+                
+                osc.start(ctx.currentTime + delay);
+                osc.stop(ctx.currentTime + delay + duration);
+            };
+            
+            // Produce un "Ding-Ding"
+            playTone(523.25, 0, 0.3);    // Nota Do
+            playTone(659.25, 0.15, 0.4); // Nota Mi
+        } catch (e) {
+            console.warn('Audio bloqueado por el navegador.', e);
         }
     };
 
@@ -370,14 +401,25 @@
                             setApts(newList);
                             setPastApts(pastList);
 
-                            // 2. NOTIFICAR DE FORMA SEGURA
+                            // 2. NOTIFICAR Y REPRODUCIR SONIDO
                             if (initialized.current) {
+                                let alertTriggered = false;
+                                
                                 newList.forEach(apt => {
-                                    if (!prevAptIds.current.has(apt.id))
+                                    if (!prevAptIds.current.has(apt.id)) {
                                         showNotification('Nuevo turno reservado', `${apt.client} - ${formatDate(apt.date)} ${apt.time}hs`);
+                                        alertTriggered = true;
+                                    }
                                 });
+                                
                                 const removed = [...prevAptIds.current].filter(id => !newList.find(a => a.id === id));
-                                if (removed.length > 0) showNotification('Turno cancelado', 'Un cliente canceló su turno.');
+                                if (removed.length > 0) {
+                                    showNotification('Turno cancelado', 'Un cliente canceló su turno.');
+                                    alertTriggered = true;
+                                }
+                                
+                                // Si hubo algún cambio nuevo, reproducimos el sonido
+                                if (alertTriggered) playNotificationSound();
                             }
                             
                             prevAptIds.current = new Set(newList.map(a => a.id));
@@ -620,6 +662,7 @@
                             <button onClick={async () => {
                                 const ok = await requestNotificationPermission();
                                 setDialog({ type:'alert', title:'Notificaciones', message: ok ? '¡Notificaciones activadas!' : 'Permiso denegado. Habilitalo desde la configuración del navegador.' });
+                                playNotificationSound(); // Hacemos un sonido de prueba
                             }} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-semibold text-sm active:scale-[0.98] transition">
                                 Activar notificaciones
                             </button>
@@ -828,12 +871,10 @@
                 const today    = getTodayStr();
                 const fullPhone = buildPhone(searchPrefix, localClean);
                 
-                // Opción 1 aplicada: Consulta simple a Firestore que no requiere configurar índices
                 const snap = await db.collection("appointments")
                     .where("profId", "==", profId)
                     .get();
 
-                // Filtrado con JavaScript
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                     .filter(a => a.phone === fullPhone && a.date >= today)
                     .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
