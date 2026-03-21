@@ -680,17 +680,6 @@
 
                 setBooking(true);
 
-                // Asegurar autenticación anónima
-                try {
-                    if (!auth.currentUser) {
-                        await auth.signInAnonymously();
-                    }
-                } catch (authErr) {
-                    alert("Error de autenticación: " + (authErr.code || authErr.message) + ". Habilitá el inicio de sesión anónimo en Firebase Console > Authentication.");
-                    setBooking(false);
-                    return;
-                }
-
                 // ID determinístico para poder hacer la transacción atómica
                 const slotId = `${profId}_${selectedDate}_${selectedTime.replace(':', '-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
@@ -726,7 +715,8 @@
                         setBookedTimes(snap.docs.map(d => d.data().time));
                         setSelectedTime('');
                     } else {
-                        alert("Error: " + (err.code || err.message || JSON.stringify(err)));
+                        alert("Ocurrió un error al reservar. Intentá de nuevo.");
+                        console.error(err);
                     }
                 } finally {
                     setBooking(false);
