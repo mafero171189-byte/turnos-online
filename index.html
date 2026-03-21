@@ -716,8 +716,9 @@
                                 Licencia activa: {daysLeft} días restantes
                             </div>
                             {/* BOTON DE RENOVACION ANTICIPADA */}
-                            <button onClick={() => setShowRenewModal(true)} className="text-xs font-bold text-brand-600 hover:text-brand-700 underline">
-                                Renovar ahora
+                            <style>{`@keyframes renewPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(245,158,11,0.55); } 50%{ box-shadow:0 0 0 8px rgba(245,158,11,0); } }`}</style>
+                            <button onClick={() => setShowRenewModal(true)} style={{background:'linear-gradient(135deg,#f59e0b,#ef4444)',animation:'renewPulse 2s ease-in-out infinite'}} className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95">
+                                🔥 Renovar ahora
                             </button>
                         </div>
                     </div>
@@ -828,6 +829,7 @@
         const [booking, setBooking]         = useState(false);
         const [clientView, setClientView]   = useState('book');
         const [phoneLocal, setPhoneLocal]   = useState('');
+        const [phonePrefix, setPhonePrefix] = useState('54');
         const [profExpired, setProfExpired] = useState(false);
 
         useEffect(() => {
@@ -872,7 +874,7 @@
                     date: selectedDate, 
                     time: selectedTime, 
                     client: e.target.clientName.value, 
-                    phone: '54'+phoneLocal, 
+                    phone: buildPhone(phonePrefix, phoneLocal), 
                     notes: e.target.notes?.value || '', 
                     clientUid: currentUid,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -935,7 +937,7 @@
 
                 {clientView === 'book' ? (
                     <form onSubmit={handleBooking} className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100">
-                        <input type="date" min={today} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
+                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
                             <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 fade-in">
                                 {availableSlots.map(time => (
@@ -945,7 +947,7 @@
                         )}
                         <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none' : ''}`}>
                             <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
-                            <input name="phoneLocal" type="tel" value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp (sin 0 ni 15)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
+                            <PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Sin 0 ni 15" required />
                             <input name="notes" placeholder="Alguna nota o comentario (opcional)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" />
                             <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
                                 {booking ? 'Reservando...' : 'Confirmar Reserva'}
