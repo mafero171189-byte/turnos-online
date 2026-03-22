@@ -1170,16 +1170,45 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {pastApts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos pasados.</p>
                             : pastApts.map(a => (
-                                <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100 opacity-75">
-                                    <div className="bg-neutral-100 text-neutral-600 font-bold px-3 py-1.5 rounded-xl text-sm border border-neutral-200 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
+                                <div key={a.id} className={`bg-white p-6 rounded-3xl shadow-sm border transition-all ${
+                                    a.attended === true  ? 'border-emerald-200 bg-emerald-50/40' :
+                                    a.attended === false ? 'border-red-200 bg-red-50/40' :
+                                    'border-neutral-100 opacity-75'
+                                }`}>
+                                    <div className="flex items-start justify-between gap-2 mb-3">
+                                        <div className="bg-neutral-100 text-neutral-600 font-bold px-3 py-1.5 rounded-xl text-sm border border-neutral-200 inline-block">{formatDate(a.date)} · {a.time} hs</div>
+                                        {/* Badge de asistencia */}
+                                        {a.attended === true  && <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-200 whitespace-nowrap">✅ Asistió</span>}
+                                        {a.attended === false && <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-lg border border-red-200 whitespace-nowrap">❌ No vino</span>}
+                                        {a.attended === undefined && <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-1 rounded-lg border border-neutral-200 whitespace-nowrap">Sin marcar</span>}
+                                    </div>
                                     <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
                                     <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
                                     {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
                                     {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
                                     {a.internalNote && <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-xl p-2.5 border border-amber-200 flex items-start gap-1.5"><IconNote /> {a.internalNote}</p>}
                                     <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
-                                        <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
-                                            <IconWhatsapp /> Contactar
+                                        {/* Botones de asistencia */}
+                                        <button
+                                            onClick={async () => {
+                                                const newVal = a.attended === true ? undefined : true;
+                                                try {
+                                                    await db.collection("appointments").doc(a.id).update({ attended: newVal === undefined ? firebase.firestore.FieldValue.delete() : newVal });
+                                                } catch { setToast({type:'error', message:'No se pudo guardar'}); }
+                                            }}
+                                            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition border ${a.attended === true ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
+                                        >✅ Vino</button>
+                                        <button
+                                            onClick={async () => {
+                                                const newVal = a.attended === false ? undefined : false;
+                                                try {
+                                                    await db.collection("appointments").doc(a.id).update({ attended: newVal === undefined ? firebase.firestore.FieldValue.delete() : newVal });
+                                                } catch { setToast({type:'error', message:'No se pudo guardar'}); }
+                                            }}
+                                            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition border ${a.attended === false ? 'bg-red-500 text-white border-red-500' : 'bg-red-50 text-red-600 border-red-200'}`}
+                                        >❌ No vino</button>
+                                        <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition">
+                                            <IconWhatsapp />
                                         </a>
                                         <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
                                             <IconTrash />
@@ -1298,6 +1327,11 @@
                             const cancelledByClient = cancelledTotal.filter(a => a.cancelledBy === 'client' || a.cancelledBy === 'client_reschedule').length;
                             const cancelledByProf = cancelledTotal.filter(a => a.cancelledBy === 'professional').length;
                             const totalApts = activeApts.length;
+                            // Asistencia — solo de turnos pasados con campo attended definido
+                            const markedApts = pastApts.filter(a => a.attended !== undefined && a.attended !== null);
+                            const attendedCount = markedApts.filter(a => a.attended === true).length;
+                            const noShowCount   = markedApts.filter(a => a.attended === false).length;
+                            const attendanceRate = markedApts.length > 0 ? Math.round((attendedCount / markedApts.length) * 100) : null;
                             const thisWeek = (() => {
                                 const now = new Date(); const day = now.getDay();
                                 const monOffset = day === 0 ? -6 : 1 - day;
@@ -1338,6 +1372,24 @@
                                             {cancelledTotal.length > 0 && <div className="text-xs text-neutral-400 mt-1">{cancelledByClient} cliente · {cancelledByProf} vos</div>}
                                         </div>
                                     </div>
+
+                                    {/* Asistencia */}
+                                    {markedApts.length > 0 && (
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm">
+                                            <h3 className="font-bold text-neutral-800 mb-4">📋 Tasa de asistencia</h3>
+                                            <div className="flex items-center gap-4 mb-3">
+                                                <div className="text-5xl font-bold text-brand-600">{attendanceRate}%</div>
+                                                <div className="text-sm text-neutral-500">
+                                                    <div className="text-emerald-600 font-semibold">✅ {attendedCount} asistieron</div>
+                                                    <div className="text-red-500 font-semibold">❌ {noShowCount} no vinieron</div>
+                                                    <div className="text-neutral-400 text-xs mt-1">de {markedApts.length} turnos marcados</div>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-neutral-100 rounded-full h-3 overflow-hidden">
+                                                <div className="bg-emerald-500 h-3 rounded-full transition-all" style={{width:`${attendanceRate}%`}}></div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm">
                                         <h3 className="font-bold text-neutral-800 mb-4 flex items-center gap-2"><IconChartBar /> Turnos por día de semana</h3>
