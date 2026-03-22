@@ -1275,20 +1275,18 @@
 
     // ===================== CANCEL VIEW =====================
     function CancelView({ profId, profPhone, setDialog, setToast, onReschedule }) {
-        const [searchPrefix, setSearchPrefix] = useState('54');
-        const [searchLocal,  setSearchLocal]  = useState('');
-        const [myApts, setMyApts]   = useState(null);
+        const [searchDni, setSearchDni] = useState('');
+        const [myApts, setMyApts]       = useState(null);
         const [searching, setSearching] = useState(false);
 
         const searchApts = async () => {
-            const localClean = searchLocal.replace(/\D/g,'');
-            if (localClean.length < 8) { setToast({ type:'error', message:'Ingresá un número válido' }); return; }
+            const dniClean = searchDni.replace(/\D/g,'');
+            if (dniClean.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
             setSearching(true);
             try {
-                const today    = getTodayStr();
-                const fullPhone = buildPhone(searchPrefix, localClean);
-                const snap = await db.collection("appointments").where("profId","==",profId).get();
-                const now = new Date();
+                const today = getTodayStr();
+                const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get();
+                const now   = new Date();
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isFuture = (a) => {
                     if (a.date > today) return true;
@@ -1296,7 +1294,7 @@
                     return false;
                 };
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .filter(a => (a.phone === fullPhone || a.phone === localClean) && isFuture(a))
+                    .filter(a => isFuture(a))
                     .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
                 setMyApts(list);
             } catch (err) { setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { setSearching(false); }
@@ -1330,9 +1328,14 @@
 
         return (
             <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100 fade-in">
-                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá el WhatsApp con el que reservaste para ver tus turnos.</p></div>
+                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá tu DNI para ver tus turnos próximos.</p></div>
                 <div className="space-y-2">
-                    <PhoneInput namePrefix="searchPrefix" nameLocal="searchLocal" prefix={searchPrefix} onPrefixChange={setSearchPrefix} value={searchLocal} onChange={e => setSearchLocal(e.target.value)} placeholder="1122334455" />
+                    <input
+                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        value={searchDni} onChange={e => setSearchDni(e.target.value.replace(/\D/g,''))}
+                        placeholder="Ej: 35123456"
+                        className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600"
+                    />
                     <button onClick={searchApts} disabled={searching} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
                         {searching ? 'Buscando...' : <><IconSearch /> Buscar mis turnos</>}
                     </button>
