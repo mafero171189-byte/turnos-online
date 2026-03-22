@@ -329,6 +329,7 @@
                             service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
                             waTemplate: DEFAULT_WA_TEMPLATE,
                             licenseExpiresAt: expirationDate.toISOString(),
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                             subscriptionStatus: 'trial', 
                             isSuspended: false,
                             themeColor: '#4f46e5', logoBase64: '',
@@ -530,7 +531,7 @@
 
         if (loading) return <Spinner />;
 
-        const filteredProfs = profs.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.email?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search));
+        const filteredProfs = profs.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.email?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search) || p.business?.toLowerCase().includes(search.toLowerCase()));
 
         return (
             <div className="max-w-6xl mx-auto p-4 md:p-8 fade-in pb-20">
@@ -558,8 +559,9 @@
                             <form onSubmit={saveMpPrice} className="flex flex-col gap-3">
                                 <div className="relative w-full">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none font-bold text-green-800">AR$</div>
-                                    <input type="text" value={mpPriceInput ? Number(mpPriceInput).toLocaleString('es-AR') : ''} onChange={handleMpChange} className="w-full pl-14 pr-4 py-3.5 bg-white border border-green-200 rounded-xl outline-none focus:border-green-500 text-lg font-bold text-neutral-800" placeholder="5000" required />
+                                    <input type="text" inputMode="numeric" value={mpPriceInput} onChange={handleMpChange} className="w-full pl-14 pr-4 py-3.5 bg-white border border-green-200 rounded-xl outline-none focus:border-green-500 text-lg font-bold text-neutral-800" placeholder="5000" required />
                                 </div>
+                                {mpPriceInput ? <p className="text-xs text-green-700 font-medium -mt-1">Precio: AR$ {Number(mpPriceInput).toLocaleString('es-AR')}</p> : null}
                                 <button type="submit" className="w-full bg-[#009ee3] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#0089c4] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
                                     &#128190; GUARDAR PRECIO
                                 </button>
@@ -603,6 +605,20 @@
                                         <h3 className="text-lg font-bold text-neutral-900">{p.business}</h3>
                                         <p className="text-sm text-neutral-500">{p.name} · {p.email}</p>
                                         <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-sm font-bold text-emerald-600 mt-1 block hover:underline">{p.phone}</a>
+                                        {(() => {
+                                            // Fecha de alta: usar createdAt si existe, sino derivar de licenseExpiresAt - 30 días (solo preciso para trials originales)
+                                            let altaDate = null;
+                                            if (p.createdAt) {
+                                                altaDate = p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt);
+                                            } else if (p.licenseExpiresAt) {
+                                                const exp = p.licenseExpiresAt?.toDate ? p.licenseExpiresAt.toDate() : new Date(p.licenseExpiresAt);
+                                                altaDate = new Date(exp);
+                                                altaDate.setDate(altaDate.getDate() - 30);
+                                            }
+                                            if (!altaDate || isNaN(altaDate.getTime())) return null;
+                                            const label = p.createdAt ? 'Alta' : 'Alta aprox.';
+                                            return <p className="text-xs text-neutral-400 mt-1">📅 {label}: {altaDate.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}</p>;
+                                        })()}
                                     </div>
                                     <div className="mt-3">
                                         {p.isSuspended ? <span className="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-lg text-xs font-bold">Suspendido</span> :
@@ -862,9 +878,15 @@
         const mapRef = useRef(null);
         const leafletMap = useRef(null);
         const markerRef = useRef(null);
+        const mountedRef = useRef(true);
         const [pickedAddress, setPickedAddress] = useState(currentAddress || '');
         const [loading, setLoading] = useState(false);
         const [searchInput, setSearchInput] = useState(currentAddress || '');
+
+        useEffect(() => {
+            mountedRef.current = true;
+            return () => { mountedRef.current = false; };
+        }, []);
 
         useEffect(() => {
             if (leafletMap.current) return; // ya iniciado
@@ -879,6 +901,10 @@
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19,
             }).addTo(leafletMap.current);
+
+            // El modal tiene animación fade-in: el contenedor puede tener dimensiones incorrectas al init.
+            // invalidateSize() fuerza a Leaflet a recalcular el tamaño real del contenedor.
+            setTimeout(() => { if (leafletMap.current) leafletMap.current.invalidateSize(); }, 350);
 
             // Marcador arrastrable
             markerRef.current = L.marker([defaultLat, defaultLng], { draggable: true })
@@ -909,12 +935,14 @@
         }, []);
 
         const reverseGeocode = async (lat, lng) => {
+            if (!mountedRef.current) return;
             setLoading(true);
             try {
                 const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es`, {
                     headers: { 'Accept-Language': 'es' }
                 });
                 const data = await res.json();
+                if (!mountedRef.current) return;
                 const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
                 // Formatear más limpio: calle número, ciudad
                 const a = data.address || {};
@@ -926,27 +954,28 @@
                 setPickedAddress(clean);
                 setSearchInput(clean);
             } catch {
-                setPickedAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-            } finally { setLoading(false); }
+                if (mountedRef.current) setPickedAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+            } finally { if (mountedRef.current) setLoading(false); }
         };
 
         const searchByAddress = async (query, moveMap = true) => {
-            if (!query.trim()) return;
+            if (!query.trim() || !mountedRef.current) return;
             setLoading(true);
             try {
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=es`);
                 const data = await res.json();
+                if (!mountedRef.current) return;
                 if (data.length > 0) {
-                    const { lat, lon, display_name } = data[0];
+                    const { lat, lon } = data[0];
                     const latN = parseFloat(lat); const lngN = parseFloat(lon);
-                    markerRef.current.setLatLng([latN, lngN]);
-                    if (moveMap) leafletMap.current.setView([latN, lngN], 16);
+                    if (markerRef.current) markerRef.current.setLatLng([latN, lngN]);
+                    if (moveMap && leafletMap.current) leafletMap.current.setView([latN, lngN], 16);
                     await reverseGeocode(latN, lngN);
                 } else {
-                    setPickedAddress(query);
+                    if (mountedRef.current) setPickedAddress(query);
                 }
-            } catch { setPickedAddress(query); }
-            finally { setLoading(false); }
+            } catch { if (mountedRef.current) setPickedAddress(query); }
+            finally { if (mountedRef.current) setLoading(false); }
         };
 
         return (
@@ -1268,7 +1297,7 @@
                 setLogoPreview(final);
                 setToast({type:'success', message:`Logo cargado (~${Math.round((final.length*3)/4/1024)}KB)`});
             };
-            img.onerror = () => setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'});
+            img.onerror = () => { URL.revokeObjectURL(url); setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'}); };
             img.src = url;
         };
 
@@ -1725,16 +1754,19 @@
 
         useEffect(() => {
             if (selectedDate && profId) {
+                let active = true;
                 setSelectedTime('');
                 setBookedTimes([]);
                 setLoadingSlots(true);
                 db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
-                    .then(snap => { 
+                    .then(snap => {
+                        if (!active) return;
                         // Excluir turnos cancelados — el slot vuelve a estar disponible
                         setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); 
                         setLoadingSlots(false); 
                     })
-                    .catch(() => { setBookedTimes([]); setLoadingSlots(false); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
+                    .catch(() => { if (!active) return; setBookedTimes([]); setLoadingSlots(false); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
+                return () => { active = false; };
             }
         }, [selectedDate, profId]);
 
