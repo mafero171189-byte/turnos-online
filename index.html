@@ -928,7 +928,7 @@
                     <div className="bg-neutral-100 text-neutral-600 font-bold px-3 py-1.5 rounded-xl text-sm border border-neutral-200 inline-block">{formatDate(a.date)} · {a.time} hs</div>
                     {a.attended === true  && <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-200 whitespace-nowrap">✅ Asistió</span>}
                     {a.attended === false && <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-lg border border-red-200 whitespace-nowrap">❌ No vino</span>}
-                    {a.attended === undefined && <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-1 rounded-lg border border-neutral-200 whitespace-nowrap">Sin marcar</span>}
+                    {(a.attended === undefined || a.attended === null) && <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-1 rounded-lg border border-neutral-200 whitespace-nowrap">Sin marcar</span>}
                 </div>
                 <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
                 <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
@@ -1221,7 +1221,7 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {pastApts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos pasados.</p>
                             : pastApts.map(a => (
-                                <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} db={db} />
+                                <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} />
                             ))}
                         </div>
                     </div>
@@ -1708,6 +1708,7 @@
         const [searching, setSearching] = useState(false);
 
         const searchApts = async () => {
+            if (searching) return;
             const dniClean = searchDni.replace(/\D/g,'');
             if (dniClean.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
             setSearching(true);
@@ -1804,10 +1805,15 @@
                                             {apt.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ Cancelado</span>}
                                             <div className="font-semibold text-neutral-800 mt-1">{apt.client}</div>
                                         </div>
-                                        {!apt.cancelled && (
+                                        {!apt.cancelled && !apt.addedManually && (
                                             <div className="flex gap-2 pt-1 border-t border-neutral-200">
                                                 <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
                                                 <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
+                                            </div>
+                                        )}
+                                        {!apt.cancelled && apt.addedManually && (
+                                            <div className="pt-1 border-t border-neutral-200">
+                                                <p className="text-xs text-neutral-400 text-center py-1">Para modificar este turno contactá al negocio.</p>
                                             </div>
                                         )}
                                     </div>
