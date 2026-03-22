@@ -900,8 +900,8 @@
                 await reverseGeocode(lat, lng);
             });
 
-            // Si hay dirección previa, geocodificarla
-            if (currentAddress) searchByAddress(currentAddress, false);
+            // Si hay dirección previa, geocodificarla y centrar el mapa
+            if (currentAddress) searchByAddress(currentAddress, true);
 
             return () => {
                 if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; }
@@ -961,7 +961,7 @@
                                 type="text"
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && searchByAddress(searchInput)}
+                                onKeyDown={e => e.key === 'Enter' && !loading && searchByAddress(searchInput)}
                                 placeholder="Buscar dirección..."
                                 className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600"
                             />
@@ -1214,15 +1214,23 @@
             return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
         }, [user]);
 
+        // Sincronizar teléfono cada vez que cambia el perfil (puede cambiar desde otro dispositivo)
         useEffect(() => {
             if (profile?.phone) {
-                // Ordenar por longitud de código descendente para que códigos más largos ganen (ej: 598 antes que 5)
                 const sorted = [...COUNTRY_CODES].sort((a,b) => b.code.length - a.code.length);
                 const guessPrefix = sorted.find(c => profile.phone.startsWith(c.code))?.code || '54';
                 setProfPhonePrefix(guessPrefix);
                 setProfPhoneLocal(profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone);
             }
-            if (profile?.address !== undefined) setAddressInput(profile.address || '');
+        }, [profile]);
+
+        // Sincronizar dirección solo al cargar el perfil por primera vez — no en snapshots posteriores
+        const addressSynced = useRef(false);
+        useEffect(() => {
+            if (profile && !addressSynced.current) {
+                addressSynced.current = true;
+                setAddressInput(profile.address || '');
+            }
         }, [profile]);
 
         if (!user || user.isAnonymous) return <AuthScreen setDialog={setDialog} setToast={setToast} />;
