@@ -966,8 +966,8 @@
                         setApts(newList); setPastApts(pastList);
                         if (initialized.current) {
                             let alertTriggered = false;
-                            // Notificar solo nuevos no cancelados
-                            all.filter(a => !a.cancelled).forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
+                            // Notificar solo nuevos turnos de clientes (no los que cargó el profesional manualmente)
+                            all.filter(a => !a.cancelled && !a.addedManually).forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
                             if (alertTriggered) playNotificationSound();
                         }
                         prevAptIds.current = new Set(all.map(a => a.id)); initialized.current = true;
@@ -1034,6 +1034,9 @@
                 const canvas = document.createElement('canvas');
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d');
+                // Fondo blanco antes de dibujar — evita que PNGs con transparencia queden negros al convertir a JPEG
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
                 ctx.drawImage(img, 0, 0, width, height);
                 const compressed = canvas.toDataURL('image/jpeg', 0.75);
                 const sizeKB = Math.round((compressed.length * 3) / 4 / 1024);
