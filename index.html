@@ -454,8 +454,10 @@
                 onConfirm: async () => {
                     try {
                         const now = new Date();
-                        const currentExp = prof.licenseExpiresAt ? new Date(prof.licenseExpiresAt) : now;
-                        const baseDate = currentExp > now ? currentExp : now;
+                        // Soporta tanto string ISO como Timestamp de Firestore
+                        const rawExp = prof.licenseExpiresAt;
+                        const currentExp = rawExp ? (rawExp?.toDate ? rawExp.toDate() : new Date(rawExp)) : now;
+                        const baseDate = currentExp > now ? new Date(currentExp) : new Date(now);
                         baseDate.setDate(baseDate.getDate() + 30);
                         await db.collection("professionals").doc(prof.id).update({ 
                             licenseExpiresAt: baseDate.toISOString(), 
@@ -485,7 +487,7 @@
         const deleteProf = async (prof) => {
             setDialog({
                 type: 'confirm', title: 'Borrar Permanentemente',
-                message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos. Esto no se deshace.`,
+                message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos de Firestore. El usuario de Auth no se borra (no es posible desde el cliente). Esto no se deshace.`,
                 onConfirm: async () => {
                     setLoading(true);
                     try {
@@ -494,7 +496,7 @@
                         apts.docs.forEach(d => batch.delete(d.ref));
                         batch.delete(db.collection("professionals").doc(prof.id));
                         await batch.commit();
-                        setToast({ type:'success', message: 'Usuario borrado de la base de datos.' });
+                        setToast({ type:'success', message: 'Datos borrados. Eliminá el usuario de Firebase Auth manualmente.' });
                     } catch(err) {
                         setToast({ type:'error', message: 'Error al borrar. Intentá de nuevo.' });
                     } finally { setLoading(false); }
@@ -532,7 +534,7 @@
                             <form onSubmit={saveMpPrice} className="flex flex-col gap-3">
                                 <div className="relative w-full">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none font-bold text-green-800">AR$</div>
-                                    <input type="text" value={mpPriceInput ? Number(mpPriceInput).toLocaleString('es-AR') : ''} onChange={handleMpChange} className="w-full pl-14 pr-4 py-3.5 bg-white border border-green-200 rounded-xl outline-none focus:border-green-500 text-lg font-bold text-neutral-800" required />
+                                    <input type="text" value={mpPriceInput ? Number(mpPriceInput).toLocaleString('es-AR') : ''} onChange={handleMpChange} className="w-full pl-14 pr-4 py-3.5 bg-white border border-green-200 rounded-xl outline-none focus:border-green-500 text-lg font-bold text-neutral-800" placeholder="5000" required />
                                 </div>
                                 <button type="submit" className="w-full bg-[#009ee3] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#0089c4] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
                                     &#128190; GUARDAR PRECIO
@@ -1181,7 +1183,6 @@
                                     return d >= mon && d <= sun;
                                 }).length;
                             })();
-                            const cancelRate = totalApts > 0 ? 0 : 0;
                             // Top clientes
                             const clientCount = {};
                             allApts.forEach(a => { if (a.client) clientCount[a.client] = (clientCount[a.client]||0)+1; });
@@ -1438,7 +1439,7 @@
 
                 {clientView === 'book' ? (
                     <form onSubmit={handleBooking} className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100">
-                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
+                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) { setSelectedDate(e.target.value); setSelectedTime(''); } }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
                             isDayUnavailable ? (
                                 <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">🚫 Este día no está disponible.</div>
