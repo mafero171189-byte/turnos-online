@@ -218,9 +218,14 @@
         const handleConfirm = async () => {
             if (confirming) return;
             setConfirming(true);
-            if (dialog.onConfirm) await dialog.onConfirm();
-            setConfirming(false);
-            onClose();
+            try {
+                if (dialog.onConfirm) await dialog.onConfirm();
+            } catch(e) {
+                console.error('Dialog onConfirm error:', e);
+            } finally {
+                setConfirming(false);
+                onClose();
+            }
         };
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm fade-in p-4">
@@ -492,10 +497,14 @@
                     setLoading(true);
                     try {
                         const apts = await db.collection("appointments").where("profId", "==", prof.id).get();
-                        const batch = db.batch();
-                        apts.docs.forEach(d => batch.delete(d.ref));
-                        batch.delete(db.collection("professionals").doc(prof.id));
-                        await batch.commit();
+                        // Firestore batch tiene límite de 500 operaciones — dividir en chunks
+                        const chunkSize = 499;
+                        const docs = [...apts.docs, { ref: db.collection("professionals").doc(prof.id) }];
+                        for (let i = 0; i < docs.length; i += chunkSize) {
+                            const batch = db.batch();
+                            docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref));
+                            await batch.commit();
+                        }
                         setToast({ type:'success', message: 'Datos borrados. Eliminá el usuario de Firebase Auth manualmente.' });
                     } catch(err) {
                         setToast({ type:'error', message: 'Error al borrar. Intentá de nuevo.' });
@@ -848,7 +857,8 @@
         const removeDate = async (date) => {
             setSaving(true);
             try {
-                const updated = blocked.filter(d => d !== date);
+                // Al quitar, también limpiar todas las fechas pasadas
+                const updated = blocked.filter(d => d !== date && d >= today);
                 await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
                 setToast({type:'success', message:'Fecha desbloqueada'});
             } catch { setToast({type:'error', message:'No se pudo guardar'}); } finally { setSaving(false); }
@@ -968,7 +978,9 @@
 
         useEffect(() => {
             if (profile?.phone) {
-                const guessPrefix = COUNTRY_CODES.find(c => profile.phone.startsWith(c.code))?.code || '54';
+                // Ordenar por longitud de código descendente para que códigos más largos ganen (ej: 598 antes que 5)
+                const sorted = [...COUNTRY_CODES].sort((a,b) => b.code.length - a.code.length);
+                const guessPrefix = sorted.find(c => profile.phone.startsWith(c.code))?.code || '54';
                 setProfPhonePrefix(guessPrefix);
                 setProfPhoneLocal(profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone);
             }
@@ -1348,6 +1360,8 @@
         const handleBooking = async (e) => {
             e.preventDefault(); if (!selectedTime) return;
             if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
+            const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
+            if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
             setBooking(true);
             try { 
                 let currentUid = auth.currentUser?.uid;
@@ -1361,7 +1375,7 @@
                 const aptData = {
                     profId, date: selectedDate, time: selectedTime,
                     client: e.target.clientName.value,
-                    dni: e.target.dni?.value || '',
+                    dni: dniValue,
                     phone: buildPhone(phonePrefix, phoneLocal),
                     notes: e.target.notes?.value || '',
                     clientUid: currentUid,
