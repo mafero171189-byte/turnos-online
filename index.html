@@ -154,10 +154,10 @@
     const DEFAULT_WA_TEMPLATE = 'Hola {cliente}! Te confirmamos tu turno para el {fecha} a las {hora}hs en {negocio}. Te esperamos!';
     const buildWAMsg = (template, apt, businessName) =>
         (template || DEFAULT_WA_TEMPLATE)
-            .replaceAll('{cliente}', apt.client)
+            .replaceAll('{cliente}', apt.client || '')
             .replaceAll('{fecha}', formatDate(apt.date))
-            .replaceAll('{hora}', apt.time)
-            .replaceAll('{negocio}', businessName);
+            .replaceAll('{hora}', apt.time || '')
+            .replaceAll('{negocio}', businessName || '');
 
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) return false;
@@ -1121,6 +1121,7 @@
                                     <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
                                     {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
                                     {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
+                                    {a.internalNote && <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-xl p-2.5 border border-amber-200 flex items-start gap-1.5"><IconNote /> {a.internalNote}</p>}
                                     <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
                                         <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
                                             <IconWhatsapp /> Contactar
@@ -1151,8 +1152,8 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {(() => {
                                 const filtered = apts.filter(a => {
-                                    if (!aptSearch) return true;
-                                    const q = aptSearch.toLowerCase();
+                                    if (!aptSearch.trim()) return true;
+                                    const q = aptSearch.trim().toLowerCase();
                                     return (a.client||'').toLowerCase().includes(q) || (a.dni||'').includes(q) || (a.phone||'').includes(q);
                                 });
                                 return filtered.length === 0
