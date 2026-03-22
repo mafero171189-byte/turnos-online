@@ -730,20 +730,13 @@
         }, [selDate]);
 
         let availableSlots = []; let isDayUnavailable = false; let isBlockedDay = false;
-        if (selDate && profile?.config) {
+        if (selDate && profile?.config && !loadingSlots) {
             const dayIsWorking = profile.config.workingDays.includes(parseDateLocal(selDate).getDay());
-            const dayIsBlocked = (profile.config.blockedDates||[]).includes(selDate);
-            isBlockedDay = dayIsBlocked;
+            isBlockedDay = (profile.config.blockedDates||[]).includes(selDate);
             if (dayIsWorking) {
-                // El profesional puede ignorar el maxPerDay (es su propio panel), pero respeta los slots ya ocupados
+                // El profesional puede ignorar maxPerDay y días bloqueados, pero no slots ya ocupados
                 availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
-            } else if (!dayIsBlocked) {
-                isDayUnavailable = true; // día no laborable y no bloqueado
-            }
-            // Si está bloqueado pero es día laborable, muestra slots con advertencia
-            if (dayIsBlocked && dayIsWorking) {
-                availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
-            } else if (dayIsBlocked && !dayIsWorking) {
+            } else {
                 isDayUnavailable = true;
             }
         }
@@ -763,12 +756,13 @@
                     dni: e.target.manualDni?.value || '',
                     phone: buildPhone(manualPrefix, manualPhone),
                     notes: e.target.manualNotes?.value || '',
-                    clientUid: 'manual',
+                    clientUid: profId,   // el uid del profesional — necesario para que la regla de Firestore acepte el create
+                    addedManually: true, // marca para identificar que lo cargó el profesional
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef);
-                    if (slotDoc.exists) throw new Error("Ese horario ya fue reservado.");
+                    if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado.");
                     tx.set(slotRef, aptData);
                 });
                 setToast({ type:'success', message:'¡Turno agregado correctamente!' });
@@ -961,8 +955,10 @@
                         };
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         allAptsRef.current = all;
-                        // Cancelados van a upcoming con badge, no al historial
-                        const newList = all.filter(a => !isPast(a) || a.cancelled).sort((a,b) => {
+                        const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+                        const sixtyStr = `${sixtyDaysAgo.getFullYear()}-${String(sixtyDaysAgo.getMonth()+1).padStart(2,'0')}-${String(sixtyDaysAgo.getDate()).padStart(2,'0')}`;
+                        // Cancelados: solo los de los últimos 60 días (no inundar el panel con cancelados viejos)
+                        const newList = all.filter(a => !isPast(a) || (a.cancelled && a.date >= sixtyStr)).sort((a,b) => {
                             if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
                             return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                         });
@@ -992,8 +988,13 @@
                     return false;
                 };
                 const all = allAptsRef.current;
-                setApts(all.filter(a => !isPastNow(a)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)));
-                setPastApts(all.filter(a => isPastNow(a)).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
+                const sixtyDaysAgoT = new Date(); sixtyDaysAgoT.setDate(sixtyDaysAgoT.getDate() - 60);
+                const sixtyStrT = `${sixtyDaysAgoT.getFullYear()}-${String(sixtyDaysAgoT.getMonth()+1).padStart(2,'0')}-${String(sixtyDaysAgoT.getDate()).padStart(2,'0')}`;
+                setApts(all.filter(a => !isPastNow(a) || (a.cancelled && a.date >= sixtyStrT)).sort((a,b) => {
+                    if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
+                    return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
+                }));
+                setPastApts(all.filter(a => isPastNow(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
             }, 60000);
             return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
         }, [user]);
@@ -1035,16 +1036,10 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
                 const compressed = canvas.toDataURL('image/jpeg', 0.75);
-                // Verificar que el resultado base64 no supere ~200KB
                 const sizeKB = Math.round((compressed.length * 3) / 4 / 1024);
-                if (sizeKB > 200) {
-                    // Reintentar con calidad más baja
-                    const retry = canvas.toDataURL('image/jpeg', 0.5);
-                    setLogoPreview(retry);
-                } else {
-                    setLogoPreview(compressed);
-                }
-                setToast({type:'success', message:`Logo cargado (~${Math.round((compressed.length*3)/4/1024)}KB)`});
+                const final = sizeKB > 200 ? canvas.toDataURL('image/jpeg', 0.5) : compressed;
+                setLogoPreview(final);
+                setToast({type:'success', message:`Logo cargado (~${Math.round((final.length*3)/4/1024)}KB)`});
             };
             img.onerror = () => setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'});
             img.src = url;
@@ -1079,7 +1074,7 @@
             try {
                 await db.collection("professionals").doc(user.uid).update({
                     name: f.get('name'), business: f.get('business'), service: f.get('service'),
-                    phone: f.get('phonePrefix')+local, waTemplate: f.get('waTemplate'),
+                    phone: f.get('phonePrefix') + local, waTemplate: f.get('waTemplate'),
                     themeColor: f.get('themeColor'), logoBase64: logoPreview,
                     config: {
                         workingDays,
@@ -1223,7 +1218,8 @@
                                 const renderCard = (a) => (
                                         <div key={a.id} className={`p-6 rounded-3xl shadow-sm border ${a.cancelled ? 'bg-red-50 border-red-200 opacity-80' : 'bg-white border-neutral-100'}`}>
                                             <div className={`font-bold px-3 py-1.5 rounded-xl text-sm border inline-block mb-3 ${a.cancelled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-brand-50 text-brand-700 border-brand-100'}`}>{formatDate(a.date)} · {a.time} hs</div>
-                                            {a.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ Cancelado por {a.cancelledBy === 'client' ? 'cliente' : a.cancelledBy === 'client_reschedule' ? 'cliente (reprogramó)' : 'profesional'}</span>}
+                                            {a.addedManually && !a.cancelled && <span className="ml-2 text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-lg border border-violet-200">Manual</span>}
+                                            {a.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ {a.cancelledBy === 'client' ? 'Cancelado por cliente' : a.cancelledBy === 'client_reschedule' ? 'Cancelado (reprogramó)' : a.cancelledBy === 'professional' ? 'Cancelado por vos' : 'Cancelado'}</span>}
                                             <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
                                             <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
                                             {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
@@ -1511,10 +1507,10 @@
                     clientUid: currentUid,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
-                // Transacción atómica: falla si otro usuario reservó el slot al mismo tiempo
+                // Transacción atómica: falla si otro usuario reservó el slot al mismo tiempo (y no está cancelado)
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef);
-                    if (slotDoc.exists) throw new Error("Ese horario ya fue reservado por otra persona.");
+                    if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado por otra persona.");
                     tx.set(slotRef, aptData);
                 });
                 
@@ -1547,7 +1543,10 @@
                 const dur = prof?.config?.duration || 30;
                 const endD = new Date(y,m-1,d,h,min+dur);
                 const dtEnd = `${endD.getFullYear()}${pad(endD.getMonth()+1)}${pad(endD.getDate())}T${pad(endD.getHours())}${pad(endD.getMinutes())}00`;
-                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`BEGIN:VEVENT`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:Turno en ${prof?.business || ''}`,`DESCRIPTION:Turno reservado en ${prof?.business || ''}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
+                const now2 = new Date();
+                const stamp = `${now2.getUTCFullYear()}${pad(now2.getUTCMonth()+1)}${pad(now2.getUTCDate())}T${pad(now2.getUTCHours())}${pad(now2.getUTCMinutes())}${pad(now2.getUTCSeconds())}Z`;
+                const uid = `turno-${profId}-${sent.date}-${sent.time.replace(':','')}@turnofacilpro`;
+                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`CALSCALE:GREGORIAN`,`PRODID:-//Turno Fácil Pro//ES`,`BEGIN:VEVENT`,`UID:${uid}`,`DTSTAMP:${stamp}`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:Turno en ${prof?.business || ''}`,`DESCRIPTION:Turno reservado en ${prof?.business || ''}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
                 const blob = new Blob([ics], {type:'text/calendar'});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'turno.ics'; a.click();
