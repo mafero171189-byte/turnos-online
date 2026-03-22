@@ -725,18 +725,27 @@
             setBookedTimes([]);
             setLoadingSlots(true);
             db.collection("appointments").where("profId","==",profId).where("date","==",selDate).get()
-                .then(snap => { setBookedTimes(snap.docs.map(d => d.data().time)); setLoadingSlots(false); })
+                .then(snap => { setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); setLoadingSlots(false); })
                 .catch(() => { setBookedTimes([]); setLoadingSlots(false); });
         }, [selDate]);
 
-        let availableSlots = []; let isDayUnavailable = false;
+        let availableSlots = []; let isDayUnavailable = false; let isBlockedDay = false;
         if (selDate && profile?.config) {
-            const isWork = profile.config.workingDays.includes(parseDateLocal(selDate).getDay()) && !(profile.config.blockedDates||[]).includes(selDate);
-            if (isWork) {
+            const dayIsWorking = profile.config.workingDays.includes(parseDateLocal(selDate).getDay());
+            const dayIsBlocked = (profile.config.blockedDates||[]).includes(selDate);
+            isBlockedDay = dayIsBlocked;
+            if (dayIsWorking) {
                 // El profesional puede ignorar el maxPerDay (es su propio panel), pero respeta los slots ya ocupados
                 availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            } else if (!dayIsBlocked) {
+                isDayUnavailable = true; // día no laborable y no bloqueado
             }
-            else isDayUnavailable = true;
+            // Si está bloqueado pero es día laborable, muestra slots con advertencia
+            if (dayIsBlocked && dayIsWorking) {
+                availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            } else if (dayIsBlocked && !dayIsWorking) {
+                isDayUnavailable = true;
+            }
         }
 
         const handleSubmit = async (e) => {
@@ -788,6 +797,11 @@
                         {selDate && (
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Horario Disponible</label>
+                                {isBlockedDay && availableSlots.length > 0 && (
+                                    <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                                        ⚠️ Este día está bloqueado para clientes, pero podés reservar igual como profesional.
+                                    </div>
+                                )}
                                 {isDayUnavailable ? (
                                     <div className="text-center py-4 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200">🚫 Día no laborable</div>
                                 ) : loadingSlots ? (
@@ -815,7 +829,7 @@
                                 <input name="manualClient" placeholder="Ej: Juan Pérez" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" required />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">DNI</label>
+                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">DNI <span className="normal-case font-normal text-neutral-400">(opcional)</span></label>
                                 <input name="manualDni" placeholder="Sin puntos" inputMode="numeric" pattern="[0-9]*" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
                             </div>
                             <div>
@@ -947,13 +961,17 @@
                         };
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         allAptsRef.current = all;
-                        const newList = all.filter(a => !isPast(a)).sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-                        const pastList = all.filter(a => isPast(a)).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                        // Cancelados van a upcoming con badge, no al historial
+                        const newList = all.filter(a => !isPast(a) || a.cancelled).sort((a,b) => {
+                            if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
+                            return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
+                        });
+                        const pastList = all.filter(a => isPast(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
                         setApts(newList); setPastApts(pastList);
                         if (initialized.current) {
                             let alertTriggered = false;
-                            // Notificar si cualquier turno (próximo o pasado reciente) es nuevo
-                            all.forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
+                            // Notificar solo nuevos no cancelados
+                            all.filter(a => !a.cancelled).forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
                             if (alertTriggered) playNotificationSound();
                         }
                         prevAptIds.current = new Set(all.map(a => a.id)); initialized.current = true;
@@ -1018,6 +1036,23 @@
             if (local.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
             const startTime = f.get('startTime'); const endTime = f.get('endTime');
             if (startTime >= endTime) { setToast({ type:'error', message:'El horario de inicio debe ser menor al de fin.' }); return; }
+            const newDuration = Number(f.get('duration'));
+            const durationChanged = newDuration !== (profile.config?.duration || 30);
+            const activeApts = apts.filter(a => !a.cancelled).length;
+            // Advertir si cambia la duración y hay turnos próximos activos
+            if (durationChanged && activeApts > 0) {
+                setDialog({
+                    type:'confirm',
+                    title:'⚠️ Cambio de duración',
+                    message:`Tenés ${activeApts} turno${activeApts > 1 ? 's' : ''} activo${activeApts > 1 ? 's' : ''} reservado${activeApts > 1 ? 's' : ''} con ${profile.config?.duration || 30} min. Los existentes no cambian, pero los nuevos se generarán con ${newDuration} min. ¿Continuar?`,
+                    onConfirm: () => doSaveProfile(f, workingDays, local, newDuration)
+                });
+                return;
+            }
+            doSaveProfile(f, workingDays, local, newDuration);
+        };
+
+        const doSaveProfile = async (f, workingDays, local, newDuration) => {
             setSaving(true);
             try {
                 await db.collection("professionals").doc(user.uid).update({
@@ -1027,7 +1062,7 @@
                     config: {
                         workingDays,
                         startTime: f.get('startTime'), endTime: f.get('endTime'),
-                        duration: Number(f.get('duration')),
+                        duration: newDuration,
                         maxPerDay: Number(f.get('maxPerDay')||0),
                         blockedDates: profile.config?.blockedDates || []  // leído del estado actual de React, no de la closure del form
                     }
@@ -1159,8 +1194,9 @@
                                 return filtered.length === 0
                                     ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{aptSearch ? '🔍 Sin resultados.' : 'No hay turnos agendados.'}</p>
                                     : filtered.map(a => (
-                                        <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
-                                            <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-sm border border-brand-100 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
+                                        <div key={a.id} className={`p-6 rounded-3xl shadow-sm border ${a.cancelled ? 'bg-red-50 border-red-200 opacity-80' : 'bg-white border-neutral-100'}`}>
+                                            <div className={`font-bold px-3 py-1.5 rounded-xl text-sm border inline-block mb-3 ${a.cancelled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-brand-50 text-brand-700 border-brand-100'}`}>{formatDate(a.date)} · {a.time} hs</div>
+                                            {a.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ Cancelado por {a.cancelledBy === 'client' ? 'cliente' : a.cancelledBy === 'client_reschedule' ? 'cliente (reprogramó)' : 'profesional'}</span>}
                                             <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
                                             <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
                                             {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
@@ -1170,12 +1206,22 @@
                                                 <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
                                                     <IconWhatsapp /> Contactar
                                                 </a>
-                                                <button onClick={() => setNotesModal({ apt: a, value: a.internalNote || '' })} title="Nota interna" className="text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
-                                                    <IconNote />
-                                                </button>
-                                                <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
-                                                    <IconTrash />
-                                                </button>
+                                                {!a.cancelled && (
+                                                    <button onClick={() => setNotesModal({ apt: a, value: a.internalNote || '' })} title="Nota interna" className="text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                                                        <IconNote />
+                                                    </button>
+                                                )}
+                                                {a.cancelled ? (
+                                                    // Turno cancelado: solo se puede borrar permanentemente
+                                                    <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
+                                                        <IconTrash />
+                                                    </button>
+                                                ) : (
+                                                    // Turno activo: marcar como cancelado (no borrar)
+                                                    <button onClick={async () => { try { await db.collection("appointments").doc(a.id).update({ cancelled:true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy:'professional' }); setToast({type:'success', message:'Turno cancelado'}); } catch(err) { setToast({type:'error', message:'No se pudo cancelar.'}); } }} className="text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Cancelar turno">
+                                                        ✕
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ));
@@ -1357,7 +1403,11 @@
                 setBookedTimes([]);
                 setLoadingSlots(true);
                 db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
-                    .then(snap => { setBookedTimes(snap.docs.map(d => d.data().time)); setLoadingSlots(false); })
+                    .then(snap => { 
+                        // Excluir turnos cancelados — el slot vuelve a estar disponible
+                        setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); 
+                        setLoadingSlots(false); 
+                    })
                     .catch(() => { setBookedTimes([]); setLoadingSlots(false); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
             }
         }, [selectedDate, profId]);
@@ -1505,6 +1555,7 @@
             setSearching(true);
             try {
                 const today = getTodayStr();
+                // Filtra por profId + dni: el cliente ve solo sus turnos en ESTE profesional
                 const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get();
                 const now   = new Date();
                 const nowMins = now.getHours() * 60 + now.getMinutes();
@@ -1514,19 +1565,34 @@
                     return false;
                 };
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .filter(a => isFuture(a))
-                    .sort((a,b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-                setMyApts(list);
+                    .sort((a,b) => {
+                        // Primero activos, luego cancelados; dentro de cada grupo por fecha
+                        if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
+                        return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
+                    });
+                // Mostrar futuros activos + los cancelados recientes (últimos 30 días)
+                const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const thirtyStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth()+1).padStart(2,'0')}-${String(thirtyDaysAgo.getDate()).padStart(2,'0')}`;
+                const filtered = list.filter(a => {
+                    if (a.cancelled) return a.date >= thirtyStr; // cancelados recientes
+                    return isFuture(a); // activos futuros
+                });
+                setMyApts(filtered);
             } catch (err) { setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { setSearching(false); }
         };
 
         const cancelApt = (apt) => {
             setDialog({
-                type:'confirm', title:'Cancelar Turno', message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs?`,
+                type:'confirm', title:'Cancelar Turno', message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs? Quedará registrado como cancelado.`,
                 onConfirm: async () => {
                     try {
-                        await db.collection("appointments").doc(apt.id).delete();
-                        setMyApts(prev => prev.filter(a => a.id !== apt.id));
+                        // Marcar como cancelado en lugar de borrar — queda en historial
+                        await db.collection("appointments").doc(apt.id).update({
+                            cancelled: true,
+                            cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            cancelledBy: 'client'
+                        });
+                        setMyApts(prev => prev.map(a => a.id === apt.id ? {...a, cancelled:true, cancelledBy:'client'} : a));
                         setToast({type:'success', message:'Turno cancelado'});
                     } catch (err) { setToast({ type:'error', message:'No se pudo cancelar.' }); }
                 }
@@ -1538,7 +1604,11 @@
                 type:'confirm', title:'Reprogramar Turno', message:`Cancelamos el turno del ${formatDate(apt.date)} a las ${apt.time}hs para elegir uno nuevo. ¿Continuás?`,
                 onConfirm: async () => {
                     try {
-                        await db.collection("appointments").doc(apt.id).delete();
+                        await db.collection("appointments").doc(apt.id).update({
+                            cancelled: true,
+                            cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            cancelledBy: 'client_reschedule'
+                        });
                         setToast({ type:'success', message:'Turno cancelado. Elegí una nueva fecha.' });
                         if (onReschedule) onReschedule();
                     } catch (err) { setToast({ type:'error', message:'No se pudo reprogramar. Intentá de nuevo.' }); }
@@ -1548,7 +1618,7 @@
 
         return (
             <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100 fade-in">
-                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá tu DNI para ver tus turnos próximos.</p></div>
+                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá tu DNI para ver tus turnos en este negocio.</p></div>
                 <div className="space-y-2">
                     <input
                         type="text" inputMode="numeric" pattern="[0-9]*"
@@ -1564,19 +1634,24 @@
                 {myApts !== null && (
                     <div className="fade-in">
                         {myApts.length === 0 ? (
-                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos futuros.</div>
+                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos para este DNI.</div>
                         ) : (
                             <div className="space-y-3">
                                 {myApts.map(apt => (
-                                    <div key={apt.id} className="bg-neutral-50 border border-neutral-200 rounded-2xl p-4 space-y-3 fade-in">
+                                    <div key={apt.id} className={`border rounded-2xl p-4 space-y-3 fade-in ${apt.cancelled ? 'bg-red-50 border-red-200 opacity-75' : 'bg-neutral-50 border-neutral-200'}`}>
                                         <div>
-                                            <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1 rounded-xl text-sm border border-brand-100 inline-block mb-1">{formatDate(apt.date)} · {apt.time} hs</div>
-                                            <div className="font-semibold text-neutral-800">{apt.client}</div>
+                                            <div className={`font-bold px-3 py-1 rounded-xl text-sm border inline-block mb-1 ${apt.cancelled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-brand-50 text-brand-700 border-brand-100'}`}>
+                                                {formatDate(apt.date)} · {apt.time} hs
+                                            </div>
+                                            {apt.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ Cancelado</span>}
+                                            <div className="font-semibold text-neutral-800 mt-1">{apt.client}</div>
                                         </div>
-                                        <div className="flex gap-2 pt-1 border-t border-neutral-200">
-                                            <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
-                                            <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
-                                        </div>
+                                        {!apt.cancelled && (
+                                            <div className="flex gap-2 pt-1 border-t border-neutral-200">
+                                                <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
+                                                <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
