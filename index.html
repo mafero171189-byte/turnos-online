@@ -166,7 +166,7 @@
         const encoded = encodeURIComponent(address);
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const url = isIOS
-            ? `maps://maps.apple.com/?q=${encoded}`
+            ? `https://maps.apple.com/?q=${encoded}`
             : `https://maps.google.com/?q=${encoded}`;
         window.open(url, '_blank');
     };
@@ -194,15 +194,19 @@
     const playNotificationSound = () => {
         try {
             const ctx = getAudioCtx(); if (!ctx) return;
-            const playTone = (freq, delay, duration) => {
-                const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.type = 'sine'; osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
-                osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + duration);
+            const play = () => {
+                const playTone = (freq, delay, duration) => {
+                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.type = 'sine'; osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+                    osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + duration);
+                };
+                playTone(523.25, 0, 0.3); playTone(659.25, 0.15, 0.4);
             };
-            playTone(523.25, 0, 0.3); playTone(659.25, 0.15, 0.4);
+            // Los navegadores crean AudioContext en estado 'suspended' por política anti-autoplay
+            if (ctx.state === 'suspended') { ctx.resume().then(play).catch(() => {}); } else { play(); }
         } catch (e) {}
     };
 
@@ -272,10 +276,13 @@
                 if (p) { 
                     setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(() => {}); 
                 } else if (u && !u.isAnonymous) { 
+                    const checkedUid = u.uid;
                     try {
-                        const adminDoc = await db.collection("admins").doc(u.uid).get();
+                        const adminDoc = await db.collection("admins").doc(checkedUid).get();
+                        // Verificar que el usuario no cambió mientras esperábamos la respuesta de Firestore
+                        if (auth.currentUser?.uid !== checkedUid) return;
                         if (adminDoc.exists) { setView('superadmin'); } else { setView('admin'); }
-                    } catch (error) { setView('admin'); }
+                    } catch (error) { if (auth.currentUser?.uid === checkedUid) setView('admin'); }
                 } else { 
                     setView('admin'); 
                 }
@@ -1094,7 +1101,7 @@
     }
 
     // ===================== HISTORY CARD =====================
-    function HistoryCard({ a, profile, setToast }) {
+    function HistoryCard({ a, profile, setToast, setDialog }) {
         const [savingAtt, setSavingAtt] = useState(false);
 
         const toggleAttended = async (val) => {
@@ -1136,7 +1143,7 @@
                     <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition">
                         <IconWhatsapp />
                     </a>
-                    <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                    <button onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
                         <IconTrash />
                     </button>
                 </div>
@@ -1177,8 +1184,9 @@
         useEffect(() => {
             if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
             let active = true; let unsubApts = null;
+            let logoInitialized = false;
             const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
-                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); setLogoPreview(d.data().logoBase64 || ''); } else setProfile(null); setLoading(false); },
+                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } } else setProfile(null); setLoading(false); },
                 (err) => { console.warn('onSnapshot prof error:', err); if (!active) return; setLoading(false); }
             );
             const subscribeApts = () => {
@@ -1193,7 +1201,7 @@
                             if (a.date < today) return true;
                             if (a.date === today) {
                                 const [h, m] = a.time.split(':').map(Number);
-                                return (h * 60 + m) < nowMins;
+                                return (h * 60 + m) <= nowMins;
                             }
                             return false;
                         };
@@ -1228,7 +1236,7 @@
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isPastNow = (a) => {
                     if (a.date < today) return true;
-                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) < nowMins; }
+                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) <= nowMins; }
                     return false;
                 };
                 const all = allAptsRef.current;
@@ -1243,9 +1251,11 @@
             return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
         }, [user]);
 
-        // Sincronizar teléfono cada vez que cambia el perfil (puede cambiar desde otro dispositivo)
+        // Sincronizar teléfono solo la primera vez que carga el perfil — igual que address
+        const phoneSynced = useRef(false);
         useEffect(() => {
-            if (profile?.phone) {
+            if (profile?.phone && !phoneSynced.current) {
+                phoneSynced.current = true;
                 const sorted = [...COUNTRY_CODES].sort((a,b) => b.code.length - a.code.length);
                 const guessPrefix = sorted.find(c => profile.phone.startsWith(c.code))?.code || '54';
                 setProfPhonePrefix(guessPrefix);
@@ -1341,6 +1351,8 @@
                         blockedDates: profile.config?.blockedDates || []  // leído del estado actual de React, no de la closure del form
                     }
                 });
+                const savedColor = f.get('themeColor');
+                if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
                 setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
             } catch(err) {
                 setToast({ type:'error', message:'Error al guardar. Intentá de nuevo.' });
@@ -1431,7 +1443,7 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {pastApts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos pasados.</p>
                             : pastApts.map(a => (
-                                <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} />
+                                <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} setDialog={setDialog} />
                             ))}
                         </div>
                     </div>
@@ -1484,7 +1496,7 @@
                                                     </button>
                                                 )}
                                                 {a.cancelled ? (
-                                                    <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
+                                                    <button onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
                                                         <IconTrash />
                                                     </button>
                                                 ) : (
@@ -1968,7 +1980,7 @@
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isFuture = (a) => {
                     if (a.date > today) return true;
-                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) > nowMins; }
+                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) >= nowMins; }
                     return false;
                 };
                 const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
