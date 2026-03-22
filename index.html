@@ -87,6 +87,9 @@
     const IconGlobe     = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
     const IconEye       = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>;
     const IconEyeOff    = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>;
+    const IconChartBar  = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>;
+    const IconNote      = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>;
+    const IconUsers     = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>;
 
     // --- Componente Toast (Notificación Flotante) ---
     const Toast = ({ toast, onClose }) => {
@@ -816,6 +819,61 @@
         );
     }
 
+    // ===================== BLOCKED DATES PANEL =====================
+    function BlockedDatesPanel({ profId, profile, setToast }) {
+        const [newDate, setNewDate] = useState('');
+        const [saving, setSaving]  = useState(false);
+        const blocked = profile?.config?.blockedDates || [];
+        const today = getTodayStr();
+
+        const addDate = async () => {
+            if (!newDate || newDate < today) { setToast({type:'error', message:'Elegí una fecha válida (hoy o futura)'}); return; }
+            if (blocked.includes(newDate)) { setToast({type:'error', message:'Esa fecha ya está bloqueada'}); return; }
+            setSaving(true);
+            try {
+                const updated = [...blocked, newDate].sort();
+                await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
+                setNewDate('');
+                setToast({type:'success', message:'Fecha bloqueada'});
+            } catch { setToast({type:'error', message:'No se pudo guardar'}); } finally { setSaving(false); }
+        };
+
+        const removeDate = async (date) => {
+            setSaving(true);
+            try {
+                const updated = blocked.filter(d => d !== date);
+                await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
+                setToast({type:'success', message:'Fecha desbloqueada'});
+            } catch { setToast({type:'error', message:'No se pudo guardar'}); } finally { setSaving(false); }
+        };
+
+        return (
+            <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
+                <h2 className="text-xl font-semibold mb-1 flex items-center gap-2">🚫 Días Bloqueados</h2>
+                <p className="text-sm text-neutral-500 mb-5">Marcá feriados, vacaciones o cualquier fecha en que no atendés. Los clientes no podrán reservar esos días.</p>
+                <div className="flex gap-2 mb-5">
+                    <input type="date" min={today} value={newDate} onChange={e => setNewDate(e.target.value)}
+                        className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600" />
+                    <button onClick={addDate} disabled={saving || !newDate} className="bg-brand-600 text-white px-5 py-3 rounded-2xl text-sm font-semibold active:scale-95 transition disabled:bg-brand-300">
+                        Bloquear
+                    </button>
+                </div>
+                {blocked.length === 0 ? (
+                    <p className="text-sm text-neutral-400 text-center py-4 bg-neutral-50 rounded-2xl border border-neutral-100">No hay fechas bloqueadas.</p>
+                ) : (
+                    <div className="space-y-2">
+                        {blocked.filter(d => d >= today).map(d => (
+                            <div key={d} className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                                <span className="font-semibold text-red-700 text-sm">🚫 {formatDate(d)}</span>
+                                <button onClick={() => removeDate(d)} disabled={saving} className="text-red-400 hover:text-red-700 transition text-xs font-bold">Quitar</button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     // ===================== ADMIN (PROFESSIONAL) =====================
     function AdminView({ user, setDialog, setToast }) {
         const [profile, setProfile]       = useState(null);
@@ -826,6 +884,8 @@
         const [profPhonePrefix, setProfPhonePrefix] = useState('54');
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
         const [logoPreview, setLogoPreview] = useState('');
+        const [aptSearch, setAptSearch]   = useState('');
+        const [notesModal, setNotesModal] = useState(null); // {apt, value}
         
         // ESTADO PARA MOSTRAR EL MODAL DE RENOVACIÓN ANTICIPADA
         const [showRenewModal, setShowRenewModal] = useState(false);
@@ -944,7 +1004,9 @@
                     config: {
                         workingDays,
                         startTime: f.get('startTime'), endTime: f.get('endTime'),
-                        duration: Number(f.get('duration')), blockedDates: profile.config?.blockedDates || []
+                        duration: Number(f.get('duration')),
+                        maxPerDay: Number(f.get('maxPerDay')||0),
+                        blockedDates: profile.config?.blockedDates || []
                     }
                 });
                 setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
@@ -963,6 +1025,32 @@
                         setToast={setToast}
                         onClose={() => setShowAddModal(false)}
                     />
+                )}
+                {notesModal && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target===e.currentTarget) setNotesModal(null); }}>
+                        <div className="bg-white p-6 rounded-4xl shadow-2xl max-w-sm w-full border border-neutral-100 relative">
+                            <button onClick={() => setNotesModal(null)} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
+                            <h3 className="font-bold text-lg mb-1">Nota Interna</h3>
+                            <p className="text-xs text-neutral-500 mb-3">Solo vos podés ver esta nota. El cliente no la ve.</p>
+                            <p className="text-sm font-medium text-neutral-700 mb-2">{notesModal.apt.client} — {formatDate(notesModal.apt.date)} {notesModal.apt.time}hs</p>
+                            <textarea
+                                className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600 resize-none"
+                                rows="4"
+                                placeholder="Ej: cliente puntual, debe $500, alérgico a X..."
+                                value={notesModal.value}
+                                onChange={e => setNotesModal(prev => ({...prev, value: e.target.value}))}
+                            />
+                            <button onClick={async () => {
+                                try {
+                                    await db.collection("appointments").doc(notesModal.apt.id).update({ internalNote: notesModal.value });
+                                    setToast({type:'success', message:'Nota guardada'});
+                                    setNotesModal(null);
+                                } catch { setToast({type:'error', message:'No se pudo guardar'}); }
+                            }} className="mt-3 w-full bg-brand-600 text-white py-3 rounded-2xl text-sm font-semibold active:scale-95 transition">
+                                Guardar Nota
+                            </button>
+                        </div>
+                    </div>
                 )}
                 
                 <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8 pb-6 border-b border-neutral-200">
@@ -993,7 +1081,7 @@
                 </header>
 
                 <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl border border-neutral-100 shadow-sm flex-wrap">
-                    {[['appointments','Próximas Citas',<IconCalendar />],['history','Historial',<IconHistory />],['settings','Mi Perfil',<IconSettings />]].map(([tab,label,icon]) => (
+                    {[['appointments','Próximas Citas',<IconCalendar />],['history','Historial',<IconHistory />],['stats','Estadísticas',<IconChartBar />],['settings','Mi Perfil',<IconSettings />]].map(([tab,label,icon]) => (
                         <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeTab===tab ? 'bg-brand-50 text-brand-700' : 'text-neutral-500 hover:text-neutral-800'}`}>{icon} {label}</button>
                     ))}
                 </div>
@@ -1026,32 +1114,122 @@
 
                 {activeTab === 'appointments' && (
                     <div className="fade-in">
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                             <h2 className="text-2xl font-semibold">Turnos Programados</h2>
                             <button onClick={() => setShowAddModal(true)} className="bg-brand-600 text-white px-4 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm hover:bg-brand-700">
                                 ➕ Agregar Turno
                             </button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {apts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos agendados.</p> 
-                            : apts.map(a => (
-                                <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
-                                    <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-sm border border-brand-100 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
-                                    <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
-                                    <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
-                                    {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
-                                    {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
-                                    <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
-                                        <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
-                                            <IconWhatsapp /> Contactar
-                                        </a>
-                                        <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
-                                            <IconTrash />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="relative mb-5">
+                            <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400 pointer-events-none"><IconSearch /></div>
+                            <input type="text" placeholder="Buscar por nombre, DNI o teléfono..." value={aptSearch} onChange={e => setAptSearch(e.target.value)}
+                                className="w-full pl-12 pr-4 py-3.5 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 shadow-sm text-sm font-medium" />
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {(() => {
+                                const filtered = apts.filter(a => {
+                                    if (!aptSearch) return true;
+                                    const q = aptSearch.toLowerCase();
+                                    return (a.client||'').toLowerCase().includes(q) || (a.dni||'').includes(q) || (a.phone||'').includes(q);
+                                });
+                                return filtered.length === 0
+                                    ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{aptSearch ? '🔍 Sin resultados.' : 'No hay turnos agendados.'}</p>
+                                    : filtered.map(a => (
+                                        <div key={a.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100">
+                                            <div className="bg-brand-50 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-sm border border-brand-100 inline-block mb-3">{formatDate(a.date)} · {a.time} hs</div>
+                                            <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
+                                            <div className="text-emerald-600 text-sm font-medium mt-1">{a.phone}</div>
+                                            {a.dni && <div className="text-neutral-500 text-xs font-medium mt-0.5">DNI: {a.dni}</div>}
+                                            {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
+                                            {a.internalNote && <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-xl p-2.5 border border-amber-200 flex items-start gap-1.5"><IconNote /> {a.internalNote}</p>}
+                                            <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
+                                                <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
+                                                    <IconWhatsapp /> Contactar
+                                                </a>
+                                                <button onClick={() => setNotesModal({ apt: a, value: a.internalNote || '' })} title="Nota interna" className="text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                                                    <IconNote />
+                                                </button>
+                                                <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                                                    <IconTrash />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ));
+                            })()}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'stats' && (
+                    <div className="fade-in space-y-6">
+                        <h2 className="text-2xl font-semibold mb-2">Estadísticas</h2>
+                        {(() => {
+                            const allApts = [...apts, ...pastApts];
+                            const totalApts = allApts.length;
+                            const thisWeek = (() => {
+                                const now = new Date(); const day = now.getDay();
+                                const mon = new Date(now); mon.setDate(now.getDate() - (day===0?6:day-1)); mon.setHours(0,0,0,0);
+                                const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
+                                return allApts.filter(a => { const d = parseDateLocal(a.date); return d >= mon && d <= sun; }).length;
+                            })();
+                            const cancelRate = totalApts > 0 ? 0 : 0;
+                            // Top clientes
+                            const clientCount = {};
+                            allApts.forEach(a => { if (a.client) clientCount[a.client] = (clientCount[a.client]||0)+1; });
+                            const topClients = Object.entries(clientCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+                            // Turnos por día de semana
+                            const byDay = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+                            allApts.forEach(a => { if (a.date) byDay[parseDateLocal(a.date).getDay()]++; });
+                            const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+                            const maxByDay = Math.max(...Object.values(byDay), 1);
+                            return (
+                                <>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center">
+                                            <div className="text-4xl font-bold text-brand-600">{totalApts}</div>
+                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Turnos totales</div>
+                                        </div>
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center">
+                                            <div className="text-4xl font-bold text-emerald-600">{apts.length}</div>
+                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Próximos</div>
+                                        </div>
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center col-span-2 md:col-span-1">
+                                            <div className="text-4xl font-bold text-amber-500">{thisWeek}</div>
+                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Esta semana</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm">
+                                        <h3 className="font-bold text-neutral-800 mb-4 flex items-center gap-2"><IconChartBar /> Turnos por día de semana</h3>
+                                        <div className="flex items-end gap-2 h-32">
+                                            {[1,2,3,4,5,6,0].map(d => (
+                                                <div key={d} className="flex-1 flex flex-col items-center gap-1">
+                                                    <div className="w-full bg-brand-100 rounded-t-lg relative" style={{height:`${Math.max(4,(byDay[d]/maxByDay)*100)}%`}}>
+                                                        <div className="absolute -top-5 w-full text-center text-xs font-bold text-brand-700">{byDay[d]||''}</div>
+                                                    </div>
+                                                    <span className="text-xs text-neutral-500 font-medium">{dayNames[d]}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {topClients.length > 0 && (
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm">
+                                            <h3 className="font-bold text-neutral-800 mb-4 flex items-center gap-2"><IconUsers /> Clientes frecuentes</h3>
+                                            <div className="space-y-3">
+                                                {topClients.map(([name, count], i) => (
+                                                    <div key={name} className="flex items-center gap-3">
+                                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${i===0?'bg-amber-400':i===1?'bg-neutral-400':i===2?'bg-orange-300':'bg-neutral-200 text-neutral-600'}`}>{i+1}</span>
+                                                        <span className="flex-1 font-medium text-sm text-neutral-800">{name}</span>
+                                                        <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2 py-1 rounded-lg">{count} {count===1?'turno':'turnos'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </div>
                 )}
 
@@ -1095,14 +1273,21 @@
                                         {DAYS.map(d => (<label key={d.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300"><input name={`day_${d.id}`} type="checkbox" defaultChecked={(profile.config?.workingDays||[1,2,3,4,5]).includes(d.id)} className="accent-brand-600" /><span className="text-sm font-medium">{d.name}</span></label>))}
                                     </div>
                                     <div className="grid grid-cols-3 gap-4">
-                                        <div><input name="startTime" type="time" defaultValue={profile.config?.startTime||'09:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
-                                        <div><input name="endTime" type="time" defaultValue={profile.config?.endTime||'18:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
-                                        <div><select name="duration" defaultValue={profile.config?.duration||30} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm"><option value="15">15m</option><option value="30">30m</option><option value="60">1h</option></select></div>
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Desde</label><input name="startTime" type="time" defaultValue={profile.config?.startTime||'09:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Hasta</label><input name="endTime" type="time" defaultValue={profile.config?.endTime||'18:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Duración</label><select name="duration" defaultValue={profile.config?.duration||30} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm"><option value="15">15m</option><option value="30">30m</option><option value="60">1h</option></select></div>
+                                    </div>
+                                    <div className="mt-4">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Límite de turnos por día (0 = sin límite)</label>
+                                        <input name="maxPerDay" type="number" min="0" max="100" defaultValue={profile.config?.maxPerDay||0} className="w-32 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" />
                                     </div>
                                 </div>
                                 <button type="submit" disabled={saving} className={`px-8 py-4 rounded-2xl font-semibold shadow-lg text-white transition ${saving ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 active:scale-95'}`}>{saving ? 'Guardando...' : 'Guardar Cambios'}</button>
                             </form>
                         </div>
+
+                        {/* Días bloqueados */}
+                        <BlockedDatesPanel profId={user.uid} profile={profile} setToast={setToast} />
                     </div>
                 )}
             </div>
@@ -1217,8 +1402,14 @@
         let isDayUnavailable = false;
         if (selectedDate) {
             const isWork = prof.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
-            if (isWork) availableSlots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
-            else isDayUnavailable = true;
+            if (isWork) {
+                const maxPerDay = prof.config.maxPerDay || 0;
+                if (maxPerDay > 0 && bookedTimes.length >= maxPerDay) {
+                    isDayUnavailable = true;
+                } else {
+                    availableSlots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
+                }
+            } else isDayUnavailable = true;
             if (selectedDate === today) { const nowMins = new Date().getHours()*60 + new Date().getMinutes(); availableSlots = availableSlots.filter(t => (Number(t.split(':')[0])*60+Number(t.split(':')[1])) > nowMins); }
         }
 
@@ -1241,7 +1432,7 @@
                         <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
                             isDayUnavailable ? (
-                                <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">&#128683; Este día no está disponible.</div>
+                                <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">🚫 Este día no está disponible.</div>
                             ) : loadingSlots ? (
                                 <div className="text-center py-5 text-sm text-neutral-400 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in flex items-center justify-center gap-2">
                                     <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...
