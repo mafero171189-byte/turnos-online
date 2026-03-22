@@ -952,10 +952,11 @@
                         setApts(newList); setPastApts(pastList);
                         if (initialized.current) {
                             let alertTriggered = false;
-                            newList.forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
+                            // Notificar si cualquier turno (próximo o pasado reciente) es nuevo
+                            all.forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
                             if (alertTriggered) playNotificationSound();
                         }
-                        prevAptIds.current = new Set(newList.map(a => a.id)); initialized.current = true;
+                        prevAptIds.current = new Set(all.map(a => a.id)); initialized.current = true;
                     },
                     (err) => { console.warn('onSnapshot apts error:', err); }
                 );
@@ -1418,7 +1419,7 @@
                         <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
                         <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
                     </div>
-                    <button onClick={() => { setSent(null); setSelectedDate(''); setClientView('cancel'); }} className="mt-6 w-full custom-text border custom-border py-3 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
+                    <button onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-6 w-full custom-text border custom-border py-3 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
                 </div>
             </div>
         );
@@ -1485,14 +1486,14 @@
                         </div>
                     </form>
                 ) : (
-                    <CancelView profId={profId} profPhone={prof.phone} setDialog={setDialog} setToast={setToast} onReschedule={() => { setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
+                    <CancelView profId={profId} setDialog={setDialog} setToast={setToast} onReschedule={() => { setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
                 )}
             </div>
         );
     }
 
     // ===================== CANCEL VIEW =====================
-    function CancelView({ profId, profPhone, setDialog, setToast, onReschedule }) {
+    function CancelView({ profId, setDialog, setToast, onReschedule }) {
         const [searchDni, setSearchDni] = useState('');
         const [myApts, setMyApts]       = useState(null);
         const [searching, setSearching] = useState(false);
