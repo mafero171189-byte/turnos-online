@@ -140,7 +140,8 @@
     const getTodayStr   = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
     const getDaysLeft   = (expiresAt) => {
         if (!expiresAt) return 0;
-        const ms = new Date(expiresAt).getTime();
+        // Soporta tanto string ISO como Timestamp de Firestore
+        const ms = expiresAt?.toDate ? expiresAt.toDate().getTime() : new Date(expiresAt).getTime();
         if (isNaN(ms)) return 0;
         const diff = ms - new Date().getTime();
         return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
@@ -717,7 +718,10 @@
         let availableSlots = []; let isDayUnavailable = false;
         if (selDate && profile?.config) {
             const isWork = profile.config.workingDays.includes(parseDateLocal(selDate).getDay()) && !(profile.config.blockedDates||[]).includes(selDate);
-            if (isWork) availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            if (isWork) {
+                // El profesional puede ignorar el maxPerDay (es su propio panel), pero respeta los slots ya ocupados
+                availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            }
             else isDayUnavailable = true;
         }
 
@@ -831,7 +835,8 @@
             if (blocked.includes(newDate)) { setToast({type:'error', message:'Esa fecha ya está bloqueada'}); return; }
             setSaving(true);
             try {
-                const updated = [...blocked, newDate].sort();
+                // Al agregar, también limpiar fechas pasadas para no acumular basura en Firestore
+                const updated = [...blocked.filter(d => d >= today), newDate].sort();
                 await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
                 setNewDate('');
                 setToast({type:'success', message:'Fecha bloqueada'});
@@ -1006,7 +1011,7 @@
                         startTime: f.get('startTime'), endTime: f.get('endTime'),
                         duration: Number(f.get('duration')),
                         maxPerDay: Number(f.get('maxPerDay')||0),
-                        blockedDates: profile.config?.blockedDates || []
+                        blockedDates: profile.config?.blockedDates || []  // leído del estado actual de React, no de la closure del form
                     }
                 });
                 setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
@@ -1168,9 +1173,13 @@
                             const totalApts = allApts.length;
                             const thisWeek = (() => {
                                 const now = new Date(); const day = now.getDay();
-                                const mon = new Date(now); mon.setDate(now.getDate() - (day===0?6:day-1)); mon.setHours(0,0,0,0);
+                                const monOffset = day === 0 ? -6 : 1 - day;
+                                const mon = new Date(now); mon.setDate(now.getDate() + monOffset); mon.setHours(0,0,0,0);
                                 const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
-                                return allApts.filter(a => { const d = parseDateLocal(a.date); return d >= mon && d <= sun; }).length;
+                                return allApts.filter(a => {
+                                    const d = parseDateLocal(a.date); d.setHours(12,0,0,0);
+                                    return d >= mon && d <= sun;
+                                }).length;
                             })();
                             const cancelRate = totalApts > 0 ? 0 : 0;
                             // Top clientes
@@ -1400,7 +1409,7 @@
 
         const today = getTodayStr(); let availableSlots = [];
         let isDayUnavailable = false;
-        if (selectedDate) {
+        if (selectedDate && !loadingSlots) {
             const isWork = prof.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
             if (isWork) {
                 const maxPerDay = prof.config.maxPerDay || 0;
@@ -1524,10 +1533,11 @@
                     <input
                         type="text" inputMode="numeric" pattern="[0-9]*"
                         value={searchDni} onChange={e => setSearchDni(e.target.value.replace(/\D/g,''))}
+                        onKeyDown={e => e.key === 'Enter' && searchApts()}
                         placeholder="Ej: 35123456"
                         className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600"
                     />
-                    <button onClick={searchApts} disabled={searching} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
+                    <button onClick={searchApts} disabled={searching} className="w-full custom-bg py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
                         {searching ? 'Buscando...' : <><IconSearch /> Buscar mis turnos</>}
                     </button>
                 </div>
