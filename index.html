@@ -598,19 +598,21 @@
 
     // ===================== PAYWALL VIEW (REUTILIZABLE PARA RENOVACIÓN) =====================
     function PaywallView({ userEmail, isSuspended, onClose }) {
-        const [settings, setSettings] = useState({ mpPrice: '5000', paypalPrice: '15' });
+        const [settings, setSettings] = useState(null);
         
         useEffect(() => {
-            db.collection("settings").doc("payment").get().then(doc => { if(doc.exists) setSettings(prev => ({ ...prev, ...doc.data() })); });
+            db.collection("settings").doc("payment").get().then(doc => {
+                if (doc.exists) setSettings(doc.data());
+                else setSettings({ mpPrice: '5000', paypalPrice: '15' });
+            }).catch(() => setSettings({ mpPrice: '5000', paypalPrice: '15' }));
         }, []);
 
         const waMessage = encodeURIComponent(`Hola! Acabo de realizar el pago para renovar la licencia de Turno Fácil Pro por 30 días.\n\nMi correo registrado es: *${userEmail}*\n\nTe adjunto mi comprobante de pago:`);
         const adminWaLink = `https://wa.me/5491135654094?text=${waMessage}`;
         
         const mpLink = "https://mpago.li/1wHMvGg";
-        const paypalLink = `https://paypal.me/MatiasRodriguez1789/${settings.paypalPrice}usd`;
-
-        const formattedMpPrice = Number(settings.mpPrice || 5000).toLocaleString('es-AR');
+        const paypalLink = settings ? `https://paypal.me/MatiasRodriguez1789/${settings.paypalPrice}usd` : '#';
+        const formattedMpPrice = settings ? Number(settings.mpPrice || 5000).toLocaleString('es-AR') : null;
 
         // Si existe onClose, significa que estamos viendo esto como Modal (renovación anticipada)
         if (onClose) {
@@ -623,8 +625,15 @@
                         <p className="text-neutral-500 text-xs mb-6">Sumá 30 días a tu licencia actual sin esperar a que se corte el servicio.</p>
                         
                         <div className="space-y-3 mb-6">
-                            <a href={mpLink} target="_blank" className="block w-full bg-[#009ee3] text-white py-3 rounded-2xl font-semibold hover:bg-[#0089c4] transition shadow-md text-sm">Pagar con Mercado Pago (AR$ {formattedMpPrice})</a>
-                            <a href={paypalLink} target="_blank" className="block w-full bg-[#003087] text-white py-3 rounded-2xl font-semibold hover:bg-[#001c56] transition shadow-md text-sm">Pagar con PayPal ({settings.paypalPrice} USD)</a>
+                            {!settings ? (
+                                <div className="flex items-center justify-center py-6 gap-2 text-neutral-400 text-sm">
+                                    <div className="w-4 h-4 border-2 border-neutral-300 border-t-transparent rounded-full animate-spin"></div>
+                                    Cargando precios...
+                                </div>
+                            ) : (<>
+                                <a href={mpLink} target="_blank" className="block w-full bg-[#009ee3] text-white py-3 rounded-2xl font-semibold hover:bg-[#0089c4] transition shadow-md text-sm">Pagar con Mercado Pago (AR$ {formattedMpPrice})</a>
+                                <a href={paypalLink} target="_blank" className="block w-full bg-[#003087] text-white py-3 rounded-2xl font-semibold hover:bg-[#001c56] transition shadow-md text-sm">Pagar con PayPal ({settings.paypalPrice} USD)</a>
+                            </>)}
                         </div>
                         
                         <div className="pt-4 border-t border-neutral-100">
@@ -652,12 +661,19 @@
                     
                     {!isSuspended && (
                         <div className="space-y-3 mb-6">
-                            <a href={mpLink} target="_blank" className="block w-full bg-[#009ee3] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#0089c4] transition shadow-md">
-                                Pagar con Mercado Pago (AR$ {formattedMpPrice})
-                            </a>
-                            <a href={paypalLink} target="_blank" className="block w-full bg-[#003087] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#001c56] transition shadow-md">
-                                Pagar con PayPal ({settings.paypalPrice} USD)
-                            </a>
+                            {!settings ? (
+                                <div className="flex items-center justify-center py-6 gap-2 text-neutral-400 text-sm">
+                                    <div className="w-4 h-4 border-2 border-neutral-300 border-t-transparent rounded-full animate-spin"></div>
+                                    Cargando precios...
+                                </div>
+                            ) : (<>
+                                <a href={mpLink} target="_blank" className="block w-full bg-[#009ee3] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#0089c4] transition shadow-md">
+                                    Pagar con Mercado Pago (AR$ {formattedMpPrice})
+                                </a>
+                                <a href={paypalLink} target="_blank" className="block w-full bg-[#003087] text-white py-3.5 rounded-2xl font-semibold hover:bg-[#001c56] transition shadow-md">
+                                    Pagar con PayPal ({settings.paypalPrice} USD)
+                                </a>
+                            </>)}
                         </div>
                     )}
                     
