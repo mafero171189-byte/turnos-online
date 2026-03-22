@@ -1021,11 +1021,33 @@
         
         const handleLogoUpload = (e) => {
             const file = e.target.files[0]; if (!file) return;
-            if (file.size > 200000) { setToast({type:'error', message:'La imagen es muy pesada. Elegí una menor a 200kb.'}); return; }
-            const reader = new FileReader();
-            reader.onloadend = () => { if (reader.result) setLogoPreview(reader.result); };
-            reader.onerror = () => setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'});
-            reader.readAsDataURL(file);
+            if (file.size > 5000000) { setToast({type:'error', message:'La imagen es muy pesada. Máximo 5MB.'}); return; }
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const MAX = 300;
+                let { width, height } = img;
+                if (width > height) { if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; } }
+                else { if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; } }
+                const canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressed = canvas.toDataURL('image/jpeg', 0.75);
+                // Verificar que el resultado base64 no supere ~200KB
+                const sizeKB = Math.round((compressed.length * 3) / 4 / 1024);
+                if (sizeKB > 200) {
+                    // Reintentar con calidad más baja
+                    const retry = canvas.toDataURL('image/jpeg', 0.5);
+                    setLogoPreview(retry);
+                } else {
+                    setLogoPreview(compressed);
+                }
+                setToast({type:'success', message:`Logo cargado (~${Math.round((compressed.length*3)/4/1024)}KB)`});
+            };
+            img.onerror = () => setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'});
+            img.src = url;
         };
 
         const updateProfile = async (e) => {
@@ -1184,16 +1206,21 @@
                             <input type="text" placeholder="Buscar por nombre, DNI o teléfono..." value={aptSearch} onChange={e => setAptSearch(e.target.value)}
                                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 shadow-sm text-sm font-medium" />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="space-y-6">
                             {(() => {
                                 const filtered = apts.filter(a => {
                                     if (!aptSearch.trim()) return true;
                                     const q = aptSearch.trim().toLowerCase();
                                     return (a.client||'').toLowerCase().includes(q) || (a.dni||'').includes(q) || (a.phone||'').includes(q);
                                 });
-                                return filtered.length === 0
-                                    ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{aptSearch ? '🔍 Sin resultados.' : 'No hay turnos agendados.'}</p>
-                                    : filtered.map(a => (
+                                if (filtered.length === 0) return (
+                                    <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{aptSearch ? '🔍 Sin resultados.' : 'No hay turnos agendados.'}</p>
+                                );
+                                const todayStr = getTodayStr();
+                                const todayApts    = filtered.filter(a => a.date === todayStr && !a.cancelled);
+                                const upcomingApts = filtered.filter(a => a.date > todayStr && !a.cancelled);
+                                const cancelledApts = filtered.filter(a => a.cancelled);
+                                const renderCard = (a) => (
                                         <div key={a.id} className={`p-6 rounded-3xl shadow-sm border ${a.cancelled ? 'bg-red-50 border-red-200 opacity-80' : 'bg-white border-neutral-100'}`}>
                                             <div className={`font-bold px-3 py-1.5 rounded-xl text-sm border inline-block mb-3 ${a.cancelled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-brand-50 text-brand-700 border-brand-100'}`}>{formatDate(a.date)} · {a.time} hs</div>
                                             {a.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ Cancelado por {a.cancelledBy === 'client' ? 'cliente' : a.cancelledBy === 'client_reschedule' ? 'cliente (reprogramó)' : 'profesional'}</span>}
@@ -1212,19 +1239,51 @@
                                                     </button>
                                                 )}
                                                 {a.cancelled ? (
-                                                    // Turno cancelado: solo se puede borrar permanentemente
                                                     <button onClick={async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
                                                         <IconTrash />
                                                     </button>
                                                 ) : (
-                                                    // Turno activo: marcar como cancelado (no borrar)
                                                     <button onClick={async () => { try { await db.collection("appointments").doc(a.id).update({ cancelled:true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy:'professional' }); setToast({type:'success', message:'Turno cancelado'}); } catch(err) { setToast({type:'error', message:'No se pudo cancelar.'}); } }} className="text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Cancelar turno">
                                                         ✕
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-                                    ));
+                                );
+                                return (
+                                    <>
+                                        {todayApts.length > 0 && (
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">HOY</span>
+                                                    <span className="text-sm text-neutral-500 font-medium">{todayApts.length} turno{todayApts.length > 1 ? 's' : ''}</span>
+                                                    <div className="flex-1 h-px bg-emerald-100"></div>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{todayApts.map(renderCard)}</div>
+                                            </div>
+                                        )}
+                                        {upcomingApts.length > 0 && (
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <span className="bg-brand-100 text-brand-700 text-xs font-bold px-3 py-1 rounded-full">PRÓXIMOS</span>
+                                                    <span className="text-sm text-neutral-500 font-medium">{upcomingApts.length} turno{upcomingApts.length > 1 ? 's' : ''}</span>
+                                                    <div className="flex-1 h-px bg-brand-100"></div>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{upcomingApts.map(renderCard)}</div>
+                                            </div>
+                                        )}
+                                        {cancelledApts.length > 0 && (
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <span className="bg-red-100 text-red-700 text-xs font-bold px-3 py-1 rounded-full">CANCELADOS</span>
+                                                    <span className="text-sm text-neutral-500 font-medium">{cancelledApts.length}</span>
+                                                    <div className="flex-1 h-px bg-red-100"></div>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{cancelledApts.map(renderCard)}</div>
+                                            </div>
+                                        )}
+                                    </>
+                                );
                             })()}
                         </div>
                     </div>
@@ -1235,40 +1294,49 @@
                         <h2 className="text-2xl font-semibold mb-2">Estadísticas</h2>
                         {(() => {
                             const allApts = [...apts, ...pastApts];
-                            const totalApts = allApts.length;
+                            const activeApts = allApts.filter(a => !a.cancelled);
+                            const cancelledTotal = allApts.filter(a => a.cancelled);
+                            const cancelledByClient = cancelledTotal.filter(a => a.cancelledBy === 'client' || a.cancelledBy === 'client_reschedule').length;
+                            const cancelledByProf = cancelledTotal.filter(a => a.cancelledBy === 'professional').length;
+                            const totalApts = activeApts.length;
                             const thisWeek = (() => {
                                 const now = new Date(); const day = now.getDay();
                                 const monOffset = day === 0 ? -6 : 1 - day;
                                 const mon = new Date(now); mon.setDate(now.getDate() + monOffset); mon.setHours(0,0,0,0);
                                 const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
-                                return allApts.filter(a => {
+                                return activeApts.filter(a => {
                                     const d = parseDateLocal(a.date); d.setHours(12,0,0,0);
                                     return d >= mon && d <= sun;
                                 }).length;
                             })();
-                            // Top clientes
+                            // Top clientes (solo activos)
                             const clientCount = {};
-                            allApts.forEach(a => { if (a.client) clientCount[a.client] = (clientCount[a.client]||0)+1; });
+                            activeApts.forEach(a => { if (a.client) clientCount[a.client] = (clientCount[a.client]||0)+1; });
                             const topClients = Object.entries(clientCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-                            // Turnos por día de semana
+                            // Turnos por día de semana (solo activos)
                             const byDay = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
-                            allApts.forEach(a => { if (a.date) byDay[parseDateLocal(a.date).getDay()]++; });
+                            activeApts.forEach(a => { if (a.date) byDay[parseDateLocal(a.date).getDay()]++; });
                             const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
                             const maxByDay = Math.max(...Object.values(byDay), 1);
                             return (
                                 <>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center">
                                             <div className="text-4xl font-bold text-brand-600">{totalApts}</div>
-                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Turnos totales</div>
+                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Turnos activos</div>
                                         </div>
                                         <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center">
-                                            <div className="text-4xl font-bold text-emerald-600">{apts.length}</div>
+                                            <div className="text-4xl font-bold text-emerald-600">{apts.filter(a=>!a.cancelled).length}</div>
                                             <div className="text-sm text-neutral-500 mt-1 font-medium">Próximos</div>
                                         </div>
-                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center col-span-2 md:col-span-1">
+                                        <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm text-center">
                                             <div className="text-4xl font-bold text-amber-500">{thisWeek}</div>
                                             <div className="text-sm text-neutral-500 mt-1 font-medium">Esta semana</div>
+                                        </div>
+                                        <div className="bg-white p-6 rounded-3xl border border-red-100 shadow-sm text-center">
+                                            <div className="text-4xl font-bold text-red-500">{cancelledTotal.length}</div>
+                                            <div className="text-sm text-neutral-500 mt-1 font-medium">Cancelados</div>
+                                            {cancelledTotal.length > 0 && <div className="text-xs text-neutral-400 mt-1">{cancelledByClient} cliente · {cancelledByProf} vos</div>}
                                         </div>
                                     </div>
 
@@ -1417,6 +1485,13 @@
             if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
             const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
             if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
+            // Rate limiting: bloquear reservas repetidas desde el mismo navegador en menos de 2 min
+            const lastBooking = sessionStorage.getItem('lastBooking_' + profId);
+            if (lastBooking && Date.now() - Number(lastBooking) < 120000) {
+                const secsLeft = Math.ceil((120000 - (Date.now() - Number(lastBooking))) / 1000);
+                setToast({ type:'error', message:`Esperá ${secsLeft} segundos antes de hacer otra reserva.` });
+                return;
+            }
             setBooking(true);
             try { 
                 let currentUid = auth.currentUser?.uid;
@@ -1444,6 +1519,7 @@
                 });
                 
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
+                sessionStorage.setItem('lastBooking_' + profId, String(Date.now()));
             } catch (err) { 
                 console.error(err); 
                 const errorMsg = err.code === 'permission-denied' ? 'Error de permisos de Firebase.' : err.message;
@@ -1461,19 +1537,40 @@
             </div>
         );
 
-        if (sent) return (
-            <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
-                <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
-                    <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-6 text-5xl border border-white">&#10003;</div>
-                    <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
-                    <div className="mt-4 bg-neutral-50 rounded-2xl p-4 border custom-border">
-                        <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
-                        <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
+        if (sent) {
+            // Generar link .ics para agregar al calendario
+            const makeICS = () => {
+                const [y,m,d] = sent.date.split('-').map(Number);
+                const [h,min] = sent.time.split(':').map(Number);
+                const pad = n => String(n).padStart(2,'0');
+                const dtStart = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+                const dur = prof?.config?.duration || 30;
+                const endD = new Date(y,m-1,d,h,min+dur);
+                const dtEnd = `${endD.getFullYear()}${pad(endD.getMonth()+1)}${pad(endD.getDate())}T${pad(endD.getHours())}${pad(endD.getMinutes())}00`;
+                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`BEGIN:VEVENT`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:Turno en ${prof?.business || ''}`,`DESCRIPTION:Turno reservado en ${prof?.business || ''}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
+                const blob = new Blob([ics], {type:'text/calendar'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'turno.ics'; a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            };
+            return (
+                <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
+                    <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
+                        <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">&#10003;</div>
+                        <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
+                        <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business}</p>
+                        <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-4">
+                            <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
+                            <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
+                        </div>
+                        <button onClick={makeICS} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
+                            📅 Agregar a mi calendario
+                        </button>
+                        <button onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-2 w-full custom-text border custom-border py-2.5 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
                     </div>
-                    <button onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-6 w-full custom-text border custom-border py-3 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
                 </div>
-            </div>
-        );
+            );
+        }
 
         if (!prof) return <Spinner />;
 
