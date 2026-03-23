@@ -132,6 +132,7 @@
     );
 
     const generateTimeSlots = (start, end, durationMins) => {
+        if (!durationMins || durationMins <= 0) return [];
         const slots = []; let [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number);
         let cur = sh * 60 + sm; const endM = eh * 60 + em;
         while (cur + durationMins <= endM) {
@@ -140,7 +141,7 @@
         }
         return slots;
     };
-    const parseDateLocal = (s) => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
+    const parseDateLocal = (s) => { if (!s || !s.includes('-')) return new Date(NaN); const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
     const formatDate    = (s) => s ? s.split('-').reverse().join('/') : '';
     const getTodayStr   = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
     const getDaysLeft   = (expiresAt) => {
@@ -798,7 +799,7 @@
                 const slotRef = db.collection("appointments").doc(slotId);
                 const aptData = {
                     profId, date: selDate, time: selTime,
-                    client: e.target.manualClient.value,
+                    client: e.target.manualClient.value.trim(),
                     dni: e.target.manualDni?.value || '',
                     phone: buildPhone(manualPrefix, manualPhone),
                     notes: e.target.manualNotes?.value || '',
@@ -1795,6 +1796,12 @@
 
         const handleBooking = async (e) => {
             e.preventDefault(); if (!selectedTime) return;
+            // Verificar que el horario no haya pasado mientras el usuario llenaba el form
+            if (selectedDate === getTodayStr()) {
+                const nowMins = new Date().getHours()*60 + new Date().getMinutes();
+                const [sh, sm] = selectedTime.split(':').map(Number);
+                if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); setSelectedTime(''); return; }
+            }
             if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
             const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
             if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
@@ -1817,7 +1824,7 @@
                 const slotRef = db.collection("appointments").doc(slotId);
                 const aptData = {
                     profId, date: selectedDate, time: selectedTime,
-                    client: e.target.clientName.value,
+                    client: e.target.clientName.value.trim(),
                     dni: dniValue,
                     phone: buildPhone(phonePrefix, phoneLocal),
                     notes: e.target.notes?.value || '',
@@ -1863,7 +1870,8 @@
                 const now2 = new Date();
                 const stamp = `${now2.getUTCFullYear()}${pad(now2.getUTCMonth()+1)}${pad(now2.getUTCDate())}T${pad(now2.getUTCHours())}${pad(now2.getUTCMinutes())}${pad(now2.getUTCSeconds())}Z`;
                 const uid = `turno-${profId}-${sent.date}-${sent.time.replace(':','')}@turnofacilpro`;
-                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`CALSCALE:GREGORIAN`,`PRODID:-//Turno Fácil Pro//ES`,`BEGIN:VEVENT`,`UID:${uid}`,`DTSTAMP:${stamp}`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:Turno en ${prof?.business || ''}`,`DESCRIPTION:Turno reservado en ${prof?.business || ''}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
+                const escICS = s => s.replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;');
+                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`CALSCALE:GREGORIAN`,`PRODID:-//Turno Fácil Pro//ES`,`BEGIN:VEVENT`,`UID:${uid}`,`DTSTAMP:${stamp}`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:${escICS('Turno en ' + (prof?.business || ''))}`,`DESCRIPTION:${escICS('Turno reservado en ' + (prof?.business || ''))}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
                 const blob = new Blob([ics], {type:'text/calendar'});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'turno.ics'; a.click();
@@ -1917,7 +1925,7 @@
             <div className="max-w-md mx-auto p-6 pb-12 fade-in">
                 <div className="text-center mb-8 mt-6">
                     {prof.logoBase64 ? <img src={prof.logoBase64} className="w-24 h-24 rounded-4xl mx-auto mb-5 object-cover shadow-xl border-4 border-white" />
-                                     : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{prof.business.charAt(0).toUpperCase()}</div>}
+                                     : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{(prof.business || '?').charAt(0).toUpperCase()}</div>}
                     <h1 className="text-2xl font-bold text-neutral-950 tracking-tighter">{prof.business}</h1>
                     <p className="custom-text font-medium">{prof.service || 'Reserva tu cita online'}</p>
                     {prof.address && (
