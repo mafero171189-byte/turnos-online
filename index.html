@@ -1101,7 +1101,7 @@
                         Bloquear
                     </button>
                 </div>
-                {blocked.length === 0 ? (
+                {blocked.filter(d => d >= today).length === 0 ? (
                     <p className="text-sm text-neutral-400 text-center py-4 bg-neutral-50 rounded-2xl border border-neutral-100">No hay fechas bloqueadas.</p>
                 ) : (
                     <div className="space-y-2">
@@ -1796,8 +1796,9 @@
             clearHoldState();
             if (resetTimer) remainingSecsRef.current = 120;
             if (currentHoldRef.current) {
-                await releaseHold(currentHoldRef.current);
-                currentHoldRef.current = null;
+                const slotToRelease = currentHoldRef.current;
+                currentHoldRef.current = null; // nulificar ANTES del await para evitar race condition
+                await releaseHold(slotToRelease);
             }
         };
 
