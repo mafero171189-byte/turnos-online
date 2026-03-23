@@ -526,10 +526,13 @@
                 onConfirm: async () => {
                     setLoading(true);
                     try {
-                        const apts = await db.collection("appointments").where("profId", "==", prof.id).get();
+                        const [apts, holds] = await Promise.all([
+                            db.collection("appointments").where("profId", "==", prof.id).get(),
+                            db.collection("holds").where("profId", "==", prof.id).get()
+                        ]);
                         // Firestore batch tiene límite de 500 operaciones — dividir en chunks
                         const chunkSize = 499;
-                        const docs = [...apts.docs, { ref: db.collection("professionals").doc(prof.id) }];
+                        const docs = [...apts.docs, ...holds.docs, { ref: db.collection("professionals").doc(prof.id) }];
                         for (let i = 0; i < docs.length; i += chunkSize) {
                             const batch = db.batch();
                             docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref));
@@ -1797,6 +1800,9 @@
         const selectedDateRef = useRef('');
         useEffect(() => { selectedDateRef.current = selectedDate; }, [selectedDate]);
 
+        const expiryMountedRef = useRef(true);
+        useEffect(() => { expiryMountedRef.current = true; return () => { expiryMountedRef.current = false; }; }, []);
+
         // Reaccionar cuando el countdown llega a 0 — evita setState anidados
         useEffect(() => {
             if (holdSecondsLeft !== 0) return;
@@ -1811,7 +1817,7 @@
             const dateToReload = selectedDateRef.current;
             if (dateToReload) {
                 setSelectedDate('');
-                setTimeout(() => setSelectedDate(dateToReload), 0);
+                setTimeout(() => { if (expiryMountedRef.current) setSelectedDate(dateToReload); }, 0);
             }
             setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
         }, [holdSecondsLeft]);
@@ -1908,8 +1914,6 @@
                 setSelectedTime(time);
                 setHoldSecondsLeft(120);
                 clearInterval(holdTimerRef.current);
-                // Guardar la fecha activa en un ref para accederla desde el timer sin closures stale
-                const holdDateRef_inner = selectedDate;
                 holdTimerRef.current = setInterval(() => {
                     setHoldSecondsLeft(prev => {
                         if (prev === null) return null;
@@ -1930,7 +1934,7 @@
                 const [sh, sm] = selectedTime.split(':').map(Number);
                 if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); await abandonHold(); setSelectedTime(''); return; }
             }
-            if (holdSecondsLeft === null) { setToast({ type:'error', message:'Tu reserva expiró. Elegí un nuevo horario.' }); return; }
+            if (holdSecondsLeft === null || holdSecondsLeft <= 0) { setToast({ type:'error', message:'Tu reserva expiró. Elegí un nuevo horario.' }); return; }
             if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
             const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
             if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
