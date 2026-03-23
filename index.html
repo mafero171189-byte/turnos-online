@@ -1793,6 +1793,29 @@
             }
         };
 
+        // Guardar fecha activa en ref para accederla desde useEffects sin closures stale
+        const selectedDateRef = useRef('');
+        useEffect(() => { selectedDateRef.current = selectedDate; }, [selectedDate]);
+
+        // Reaccionar cuando el countdown llega a 0 — evita setState anidados
+        useEffect(() => {
+            if (holdSecondsLeft !== 0) return;
+            clearInterval(holdTimerRef.current);
+            holdTimerRef.current = null;
+            const expiredSlot = currentHoldRef.current;
+            currentHoldRef.current = null;
+            setHoldSecondsLeft(null);
+            setSelectedTime('');
+            if (expiredSlot) releaseHold(expiredSlot);
+            // Recargar slots de la fecha actual para liberar el slot visualmente
+            const dateToReload = selectedDateRef.current;
+            if (dateToReload) {
+                setSelectedDate('');
+                setTimeout(() => setSelectedDate(dateToReload), 0);
+            }
+            setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
+        }, [holdSecondsLeft]);
+
         // Cleanup al desmontar el componente
         useEffect(() => {
             return () => {
@@ -1885,19 +1908,12 @@
                 setSelectedTime(time);
                 setHoldSecondsLeft(120);
                 clearInterval(holdTimerRef.current);
+                // Guardar la fecha activa en un ref para accederla desde el timer sin closures stale
+                const holdDateRef_inner = selectedDate;
                 holdTimerRef.current = setInterval(() => {
                     setHoldSecondsLeft(prev => {
-                        if (prev === null || prev <= 1) {
-                            clearInterval(holdTimerRef.current);
-                            holdTimerRef.current = null;
-                            releaseHold(slotId);
-                            currentHoldRef.current = null;
-                            setSelectedTime('');
-                            // Recargar slots para que el slot vuelva a aparecer disponible
-                            setSelectedDate(d => { setTimeout(() => setSelectedDate(d), 0); return ''; });
-                            setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
-                            return null;
-                        }
+                        if (prev === null) return null;
+                        if (prev <= 1) return 0; // señal de expiración — el useEffect lo procesa
                         return prev - 1;
                     });
                 }, 1000);
@@ -2046,7 +2062,7 @@
 
                 <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-2xl border border-neutral-100 shadow-sm">
                     <button onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
-                    <button onClick={() => setClientView('cancel')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
+                    <button onClick={() => { abandonHold(); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
                 </div>
 
                 {clientView === 'book' ? (
@@ -2094,7 +2110,7 @@
                         </div>
                     </form>
                 ) : (
-                    <CancelView profId={profId} setDialog={setDialog} setToast={setToast} onReschedule={() => { setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
+                    <CancelView profId={profId} setDialog={setDialog} setToast={setToast} onReschedule={() => { abandonHold(); setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
                 )}
             </div>
         );
