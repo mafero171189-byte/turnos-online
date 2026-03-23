@@ -810,10 +810,12 @@
                     addedManually: true, // marca para identificar que lo cargó el profesional
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
+                const holdRef = db.collection("holds").doc(slotId);
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef);
                     if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado.");
                     tx.set(slotRef, aptData);
+                    tx.delete(holdRef); // Liberar hold si algún cliente lo tenía reservado
                 });
                 setToast({ type:'success', message:'¡Turno agregado correctamente!' });
                 onClose();
@@ -1831,7 +1833,10 @@
         }, []);
 
         useEffect(() => {
+            let mounted = true;
+            const prevTitle = document.title;
             db.collection("professionals").doc(profId).get().then(d => {
+                if (!mounted) return;
                 if (d.exists) {
                     const data = d.data();
                     const daysLeft = getDaysLeft(data.licenseExpiresAt);
@@ -1843,7 +1848,8 @@
                 } else {
                     setProfExpired(true);
                 }
-            }).catch(() => setProfExpired(true));
+            }).catch(() => { if (mounted) setProfExpired(true); });
+            return () => { mounted = false; document.title = prevTitle; };
         }, [profId]);
 
         useEffect(() => {
@@ -1912,8 +1918,8 @@
                 });
                 currentHoldRef.current = slotId;
                 setSelectedTime(time);
-                setHoldSecondsLeft(120);
                 clearInterval(holdTimerRef.current);
+                setHoldSecondsLeft(120);
                 holdTimerRef.current = setInterval(() => {
                     setHoldSecondsLeft(prev => {
                         if (prev === null) return null;
@@ -1922,6 +1928,9 @@
                     });
                 }, 1000);
             } catch(err) {
+                // Si ya habíamos liberado el hold anterior, limpiar el tiempo seleccionado
+                // para no dejar el slot visualmente seleccionado sin hold real
+                setSelectedTime('');
                 setToast({ type:'error', message: err.message || 'No se pudo reservar el horario.' });
             } finally { setSelectingSlot(false); }
         };
@@ -2071,7 +2080,7 @@
 
                 {clientView === 'book' ? (
                     <form onSubmit={handleBooking} className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100">
-                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) { abandonHold(); setSelectedDate(e.target.value); setSelectedTime(''); } }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
+                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) { setSelectedDate(e.target.value); setSelectedTime(''); } }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
                             isDayUnavailable ? (
                                 <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">🚫 Este día no está disponible.</div>
