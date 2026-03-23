@@ -1759,6 +1759,47 @@
         const [phonePrefix, setPhonePrefix] = useState('54');
         const [profExpired, setProfExpired] = useState(false);
         const [loadingSlots, setLoadingSlots] = useState(false);
+        const [holdSecondsLeft, setHoldSecondsLeft] = useState(null);
+        const [selectingSlot, setSelectingSlot] = useState(false);
+
+        // ID de sesión único por pestaña/browser — identifica el hold de este usuario
+        const sessionId = useRef(
+            sessionStorage.getItem('_tfpSid') || (() => {
+                const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+                sessionStorage.setItem('_tfpSid', id); return id;
+            })()
+        );
+        const holdTimerRef   = useRef(null);
+        const currentHoldRef = useRef(null); // slotId del hold activo
+
+        // Liberar hold de Firestore (silencioso)
+        const releaseHold = async (slotId) => {
+            try { await db.collection("holds").doc(slotId).delete(); } catch(e) {}
+        };
+
+        // Limpiar hold activo + countdown sin tocar Firestore
+        const clearHoldState = () => {
+            clearInterval(holdTimerRef.current);
+            holdTimerRef.current = null;
+            setHoldSecondsLeft(null);
+        };
+
+        // Liberar hold activo completamente (Firestore + estado)
+        const abandonHold = async () => {
+            clearHoldState();
+            if (currentHoldRef.current) {
+                await releaseHold(currentHoldRef.current);
+                currentHoldRef.current = null;
+            }
+        };
+
+        // Cleanup al desmontar el componente
+        useEffect(() => {
+            return () => {
+                clearInterval(holdTimerRef.current);
+                if (currentHoldRef.current) releaseHold(currentHoldRef.current);
+            };
+        }, []);
 
         useEffect(() => {
             db.collection("professionals").doc(profId).get().then(d => {
@@ -1779,20 +1820,91 @@
         useEffect(() => {
             if (selectedDate && profId) {
                 let active = true;
+                // Al cambiar fecha, liberar cualquier hold previo
+                abandonHold();
                 setSelectedTime('');
                 setBookedTimes([]);
                 setLoadingSlots(true);
-                db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get()
-                    .then(snap => {
-                        if (!active) return;
-                        // Excluir turnos cancelados — el slot vuelve a estar disponible
-                        setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); 
-                        setLoadingSlots(false); 
-                    })
-                    .catch(() => { if (!active) return; setBookedTimes([]); setLoadingSlots(false); setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' }); });
+                const nowMs = Date.now();
+                Promise.all([
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
+                ]).then(([aptsSnap, holdsSnap]) => {
+                    if (!active) return;
+                    const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
+                    // Holds activos de OTROS usuarios (el nuestro no cuenta para bloquearnos)
+                    const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
+                        const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
+                        return exp > nowMs && d.sessionId !== sessionId.current;
+                    }).map(d => d.time);
+                    setBookedTimes([...new Set([...fromApts, ...fromHolds])]);
+                    setLoadingSlots(false);
+                }).catch(() => {
+                    if (!active) return;
+                    setBookedTimes([]); setLoadingSlots(false);
+                    setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' });
+                });
                 return () => { active = false; };
             }
         }, [selectedDate, profId]);
+
+        // Seleccionar horario: crea un hold de 2 minutos en Firestore
+        const selectTime = async (time) => {
+            if (selectingSlot) return;
+            // Si toca el mismo slot, lo deselecciona
+            if (time === selectedTime) {
+                await abandonHold();
+                setSelectedTime('');
+                return;
+            }
+            setSelectingSlot(true);
+            // Liberar hold anterior si existía
+            if (currentHoldRef.current) {
+                await releaseHold(currentHoldRef.current);
+                currentHoldRef.current = null;
+                clearHoldState();
+            }
+            const slotId = `${profId}_${selectedDate}_${time.replace(':','-')}`;
+            const expiresAt = firebase.firestore.Timestamp.fromMillis(Date.now() + 2 * 60 * 1000);
+            try {
+                // Asegurarse de tener uid (anónimo) para poder escribir en Firestore
+                if (!auth.currentUser) await auth.signInAnonymously().catch(() => {});
+                await db.runTransaction(async (tx) => {
+                    const holdRef  = db.collection("holds").doc(slotId);
+                    const aptRef   = db.collection("appointments").doc(slotId);
+                    const [holdDoc, aptDoc] = await Promise.all([tx.get(holdRef), tx.get(aptRef)]);
+                    if (aptDoc.exists && !aptDoc.data().cancelled) throw new Error("Este turno acaba de ser reservado por otra persona.");
+                    if (holdDoc.exists) {
+                        const h = holdDoc.data();
+                        const exp = h.expiresAt?.toDate ? h.expiresAt.toDate().getTime() : new Date(h.expiresAt).getTime();
+                        if (exp > Date.now() && h.sessionId !== sessionId.current) throw new Error("Otro usuario está reservando este turno. Intentá en unos instantes.");
+                    }
+                    tx.set(holdRef, { profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt });
+                });
+                currentHoldRef.current = slotId;
+                setSelectedTime(time);
+                setHoldSecondsLeft(120);
+                clearInterval(holdTimerRef.current);
+                holdTimerRef.current = setInterval(() => {
+                    setHoldSecondsLeft(prev => {
+                        if (prev === null || prev <= 1) {
+                            clearInterval(holdTimerRef.current);
+                            holdTimerRef.current = null;
+                            releaseHold(slotId);
+                            currentHoldRef.current = null;
+                            setSelectedTime('');
+                            // Recargar slots para que el slot vuelva a aparecer disponible
+                            setSelectedDate(d => { setTimeout(() => setSelectedDate(d), 0); return ''; });
+                            setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
+                            return null;
+                        }
+                        return prev - 1;
+                    });
+                }, 1000);
+            } catch(err) {
+                setToast({ type:'error', message: err.message || 'No se pudo reservar el horario.' });
+            } finally { setSelectingSlot(false); }
+        };
 
         const handleBooking = async (e) => {
             e.preventDefault(); if (!selectedTime) return;
@@ -1800,18 +1912,12 @@
             if (selectedDate === getTodayStr()) {
                 const nowMins = new Date().getHours()*60 + new Date().getMinutes();
                 const [sh, sm] = selectedTime.split(':').map(Number);
-                if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); setSelectedTime(''); return; }
+                if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); await abandonHold(); setSelectedTime(''); return; }
             }
+            if (holdSecondsLeft === null) { setToast({ type:'error', message:'Tu reserva expiró. Elegí un nuevo horario.' }); return; }
             if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
             const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
             if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
-            // Rate limiting: bloquear reservas repetidas desde el mismo navegador en menos de 2 min
-            const lastBooking = sessionStorage.getItem('lastBooking_' + profId);
-            if (lastBooking && Date.now() - Number(lastBooking) < 120000) {
-                const secsLeft = Math.ceil((120000 - (Date.now() - Number(lastBooking))) / 1000);
-                setToast({ type:'error', message:`Esperá ${secsLeft} segundos antes de hacer otra reserva.` });
-                return;
-            }
             setBooking(true);
             try { 
                 let currentUid = auth.currentUser?.uid;
@@ -1819,9 +1925,9 @@
                     const cred = await auth.signInAnonymously();
                     currentUid = cred.user.uid;
                 }
-                
                 const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
+                const holdRef = db.collection("holds").doc(slotId);
                 const aptData = {
                     profId, date: selectedDate, time: selectedTime,
                     client: e.target.clientName.value.trim(),
@@ -1831,15 +1937,15 @@
                     clientUid: currentUid,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
-                // Transacción atómica: falla si otro usuario reservó el slot al mismo tiempo (y no está cancelado)
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef);
                     if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado por otra persona.");
                     tx.set(slotRef, aptData);
+                    tx.delete(holdRef); // Liberar hold al confirmar
                 });
-                
-                setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value });
-                sessionStorage.setItem('lastBooking_' + profId, String(Date.now()));
+                clearHoldState();
+                currentHoldRef.current = null;
+                setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value.trim() });
             } catch (err) { 
                 console.error(err); 
                 const errorMsg = err.code === 'permission-denied' ? 'Error de permisos de Firebase.' : err.message;
@@ -1945,7 +2051,7 @@
 
                 {clientView === 'book' ? (
                     <form onSubmit={handleBooking} className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100">
-                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) { setSelectedDate(e.target.value); setSelectedTime(''); } }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
+                        <input type="date" min={today} value={selectedDate} onChange={e => { if (e.target.value) { abandonHold(); setSelectedDate(e.target.value); setSelectedTime(''); } }} className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium" required />
                         {selectedDate && (
                             isDayUnavailable ? (
                                 <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">🚫 Este día no está disponible.</div>
@@ -1958,10 +2064,24 @@
                             ) : (
                                 <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 fade-in">
                                     {availableSlots.map(time => (
-                                        <button type="button" key={time} onClick={() => setSelectedTime(time)} className={`py-2 rounded-xl text-sm font-semibold transition-all ${selectedTime===time ? 'custom-bg shadow-md' : 'bg-neutral-50 text-neutral-700 border border-neutral-200'}`}>{time}</button>
+                                        <button type="button" key={time} onClick={() => selectTime(time)} disabled={selectingSlot} className={`py-2 rounded-xl text-sm font-semibold transition-all ${selectedTime===time ? 'custom-bg shadow-md' : 'bg-neutral-50 text-neutral-700 border border-neutral-200'} ${selectingSlot ? 'opacity-60 cursor-wait' : ''}`}>{time}</button>
                                     ))}
                                 </div>
                             )
+                        )}
+                        {selectedTime && holdSecondsLeft !== null && (
+                            <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border fade-in ${holdSecondsLeft <= 30 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">⏱</span>
+                                    <div>
+                                        <p className={`text-xs font-bold ${holdSecondsLeft <= 30 ? 'text-red-700' : 'text-amber-700'}`}>Turno reservado por vos</p>
+                                        <p className={`text-[10px] ${holdSecondsLeft <= 30 ? 'text-red-500' : 'text-amber-600'}`}>Completá el formulario antes de que expire</p>
+                                    </div>
+                                </div>
+                                <div className={`text-2xl font-bold tabular-nums ${holdSecondsLeft <= 30 ? 'text-red-600' : 'text-amber-600'}`}>
+                                    {String(Math.floor(holdSecondsLeft/60)).padStart(2,'0')}:{String(holdSecondsLeft%60).padStart(2,'0')}
+                                </div>
+                            </div>
                         )}
                         <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none' : ''}`}>
                             <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
