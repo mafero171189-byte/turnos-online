@@ -442,13 +442,19 @@
                 snap => { setProfs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); },
                 err => { console.warn('onSnapshot profs error:', err); setLoading(false); }
             );
+            let settingsInputsInitialized = false;
             const unsubSettings = db.collection("settings").doc("payment").onSnapshot(
                 doc => {
                     if(doc.exists) {
                         const data = doc.data();
                         setSettings(data);
-                        setMpPriceInput(data.mpPrice || '5000');
-                        setPaypalPriceInput(data.paypalPrice || '15');
+                        // Solo sincronizar los inputs la primera vez — igual que logo/teléfono en AdminView
+                        // Evita pisar lo que el admin está escribiendo cuando llega un snapshot por el otro precio
+                        if (!settingsInputsInitialized) {
+                            settingsInputsInitialized = true;
+                            setMpPriceInput(data.mpPrice || '5000');
+                            setPaypalPriceInput(data.paypalPrice || '15');
+                        }
                     }
                 },
                 err => { console.warn('onSnapshot settings error:', err); }
@@ -654,10 +660,13 @@
         const [settings, setSettings] = useState(null);
         
         useEffect(() => {
+            let mounted = true;
             db.collection("settings").doc("payment").get().then(doc => {
+                if (!mounted) return;
                 if (doc.exists) setSettings(doc.data());
                 else setSettings({ mpPrice: '5000', paypalPrice: '15' });
-            }).catch(() => setSettings({ mpPrice: '5000', paypalPrice: '15' }));
+            }).catch(() => { if (mounted) setSettings({ mpPrice: '5000', paypalPrice: '15' }); });
+            return () => { mounted = false; };
         }, []);
 
         const waMessage = encodeURIComponent(`Hola! Acabo de realizar el pago para renovar la licencia de Turno Fácil Pro por 30 días.\n\nMi correo registrado es: *${userEmail}*\n\nTe adjunto mi comprobante de pago:`);
@@ -756,12 +765,14 @@
 
         useEffect(() => {
             if (!selDate) return;
+            let active = true;
             setSelTime('');
             setBookedTimes([]);
             setLoadingSlots(true);
             db.collection("appointments").where("profId","==",profId).where("date","==",selDate).get()
-                .then(snap => { setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); setLoadingSlots(false); })
-                .catch(() => { setBookedTimes([]); setLoadingSlots(false); });
+                .then(snap => { if (!active) return; setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); setLoadingSlots(false); })
+                .catch(() => { if (!active) return; setBookedTimes([]); setLoadingSlots(false); });
+            return () => { active = false; };
         }, [selDate]);
 
         let availableSlots = []; let isDayUnavailable = false; let isBlockedDay = false;
@@ -1966,6 +1977,12 @@
         const [searchDni, setSearchDni] = useState('');
         const [myApts, setMyApts]       = useState(null);
         const [searching, setSearching] = useState(false);
+        const mountedRef = useRef(true);
+
+        useEffect(() => {
+            mountedRef.current = true;
+            return () => { mountedRef.current = false; };
+        }, []);
 
         const searchApts = async () => {
             if (searching) return;
@@ -1976,6 +1993,7 @@
                 const today = getTodayStr();
                 // Filtra por profId + dni: el cliente ve solo sus turnos en ESTE profesional
                 const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get();
+                if (!mountedRef.current) return;
                 const now   = new Date();
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isFuture = (a) => {
@@ -1997,7 +2015,7 @@
                     return isFuture(a); // activos futuros
                 });
                 setMyApts(filtered);
-            } catch (err) { setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { setSearching(false); }
+            } catch (err) { if (mountedRef.current) setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { if (mountedRef.current) setSearching(false); }
         };
 
         const cancelApt = (apt) => {
@@ -2028,6 +2046,7 @@
                             cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
                             cancelledBy: 'client_reschedule'
                         });
+                        setMyApts(prev => prev.map(a => a.id === apt.id ? {...a, cancelled:true, cancelledBy:'client_reschedule'} : a));
                         setToast({ type:'success', message:'Turno cancelado. Elegí una nueva fecha.' });
                         if (onReschedule) onReschedule();
                     } catch (err) { setToast({ type:'error', message:'No se pudo reprogramar. Intentá de nuevo.' }); }
