@@ -1774,8 +1774,9 @@
                 sessionStorage.setItem('_tfpSid', id); return id;
             })()
         );
-        const holdTimerRef   = useRef(null);
-        const currentHoldRef = useRef(null); // slotId del hold activo
+        const holdTimerRef      = useRef(null);
+        const currentHoldRef   = useRef(null); // slotId del hold activo
+        const remainingSecsRef = useRef(120);  // tiempo restante que se preserva al cambiar fecha
 
         // Liberar hold de Firestore (silencioso)
         const releaseHold = async (slotId) => {
@@ -1790,8 +1791,10 @@
         };
 
         // Liberar hold activo completamente (Firestore + estado)
-        const abandonHold = async () => {
+        // resetTimer=true cuando el usuario abandona voluntariamente (no al cambiar fecha)
+        const abandonHold = async (resetTimer = false) => {
             clearHoldState();
+            if (resetTimer) remainingSecsRef.current = 120;
             if (currentHoldRef.current) {
                 await releaseHold(currentHoldRef.current);
                 currentHoldRef.current = null;
@@ -1801,6 +1804,11 @@
         // Guardar fecha activa en ref para accederla desde useEffects sin closures stale
         const selectedDateRef = useRef('');
         useEffect(() => { selectedDateRef.current = selectedDate; }, [selectedDate]);
+
+        // Mantener remainingSecsRef sincronizado para que los cambios de fecha preserven el tiempo
+        useEffect(() => {
+            if (holdSecondsLeft !== null && holdSecondsLeft > 0) remainingSecsRef.current = holdSecondsLeft;
+        }, [holdSecondsLeft]);
 
         const expiryMountedRef = useRef(true);
         useEffect(() => { expiryMountedRef.current = true; return () => { expiryMountedRef.current = false; }; }, []);
@@ -1821,6 +1829,7 @@
                 setSelectedDate('');
                 setTimeout(() => { if (expiryMountedRef.current) setSelectedDate(dateToReload); }, 0);
             }
+            remainingSecsRef.current = 120; // resetear para el próximo uso
             setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
         }, [holdSecondsLeft]);
 
@@ -1886,9 +1895,9 @@
         // Seleccionar horario: crea un hold de 2 minutos en Firestore
         const selectTime = async (time) => {
             if (selectingSlot) return;
-            // Si toca el mismo slot, lo deselecciona
+            // Si toca el mismo slot, lo deselecciona — resetear timer para próxima selección
             if (time === selectedTime) {
-                await abandonHold();
+                await abandonHold(true);
                 setSelectedTime('');
                 return;
             }
@@ -1900,7 +1909,9 @@
                 clearHoldState();
             }
             const slotId = `${profId}_${selectedDate}_${time.replace(':','-')}`;
-            const expiresAt = firebase.firestore.Timestamp.fromMillis(Date.now() + 2 * 60 * 1000);
+            // Usar el tiempo restante del hold anterior para no reiniciar desde 2:00 al cambiar de fecha
+            const secsToUse = Math.max(remainingSecsRef.current || 120, 30);
+            const expiresAt = firebase.firestore.Timestamp.fromMillis(Date.now() + secsToUse * 1000);
             try {
                 // Asegurarse de tener uid (anónimo) para poder escribir en Firestore
                 if (!auth.currentUser) await auth.signInAnonymously().catch(() => {});
@@ -1919,7 +1930,7 @@
                 currentHoldRef.current = slotId;
                 setSelectedTime(time);
                 clearInterval(holdTimerRef.current);
-                setHoldSecondsLeft(120);
+                setHoldSecondsLeft(secsToUse);
                 holdTimerRef.current = setInterval(() => {
                     setHoldSecondsLeft(prev => {
                         if (prev === null) return null;
@@ -1974,6 +1985,7 @@
                 });
                 clearHoldState();
                 currentHoldRef.current = null;
+                remainingSecsRef.current = 120; // resetear para futuros usos
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value.trim() });
             } catch (err) { 
                 console.error(err); 
@@ -2075,7 +2087,7 @@
 
                 <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-2xl border border-neutral-100 shadow-sm">
                     <button onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
-                    <button onClick={() => { abandonHold(); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
+                    <button onClick={() => { abandonHold(true); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
                 </div>
 
                 {clientView === 'book' ? (
@@ -2123,7 +2135,7 @@
                         </div>
                     </form>
                 ) : (
-                    <CancelView profId={profId} setDialog={setDialog} setToast={setToast} onReschedule={() => { abandonHold(); setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
+                    <CancelView profId={profId} setDialog={setDialog} setToast={setToast} onReschedule={() => { abandonHold(true); setClientView('book'); setSelectedDate(''); setSelectedTime(''); }} />
                 )}
             </div>
         );
