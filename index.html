@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Turno Fácil Pro</title>
+    <title>Turno dere Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        brand: { 50: '#f5f7ff', 100: '#ebf0fe', 600: '#4f46e5', 700: '#4338ca', 900: '#312e81' },
+                        brand: { 50: '#f5f7ff', 100: '#ebf0fe', 200: '#dce4fe', 300: '#c3d1fc', 400: '#9db4f9', 500: '#768df4', 600: '#4f46e5', 700: '#4338ca', 900: '#312e81' },
                         neutral: tailwind.colors.slate,
                     },
                     borderRadius: { '3xl': '1.5rem', '4xl': '2rem' }
@@ -67,6 +67,16 @@
             if (document.visibilityState === 'visible') {
                 try { db.enableNetwork().catch(() => {}); } catch(e) {}
             }
+        });
+    }
+
+    // --- Fix global para el icono del marcador de Leaflet en React ---
+    if (typeof L !== 'undefined') {
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
         });
     }
 
@@ -133,20 +143,33 @@
 
     const generateTimeSlots = (start, end, durationMins) => {
         if (!durationMins || durationMins <= 0) return [];
-        const slots = []; let [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number);
-        let cur = sh * 60 + sm; const endM = eh * 60 + em;
+        const slots = []; 
+        let [sh, sm] = start.split(':').map(Number); 
+        let [eh, em] = end.split(':').map(Number);
+        let cur = sh * 60 + sm; 
+        let endM = eh * 60 + em;
+        
+        if (endM <= cur) endM += 24 * 60; // Cruza la medianoche
+        
         while (cur + durationMins <= endM) {
-            slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
+            const h = Math.floor(cur / 60) % 24;
+            const m = cur % 60;
+            slots.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
             cur += durationMins;
         }
         return slots;
     };
     const parseDateLocal = (s) => { if (!s || !s.includes('-')) return new Date(NaN); const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
     const formatDate    = (s) => s ? s.split('-').reverse().join('/') : '';
-    const getTodayStr   = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    const getTodayStr   = () => { 
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        } catch(e) {
+            const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; 
+        }
+    };
     const getDaysLeft   = (expiresAt) => {
         if (!expiresAt) return 0;
-        // Soporta tanto string ISO como Timestamp de Firestore
         const ms = expiresAt?.toDate ? expiresAt.toDate().getTime() : new Date(expiresAt).getTime();
         if (isNaN(ms)) return 0;
         const diff = ms - new Date().getTime();
@@ -206,7 +229,6 @@
                 };
                 playTone(523.25, 0, 0.3); playTone(659.25, 0.15, 0.4);
             };
-            // Los navegadores crean AudioContext en estado 'suspended' por política anti-autoplay
             if (ctx.state === 'suspended') { ctx.resume().then(play).catch(() => {}); } else { play(); }
         } catch (e) {}
     };
@@ -248,18 +270,123 @@
             }
         };
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm fade-in p-4">
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm fade-in p-4">
                 <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-neutral-100">
                     <h3 className="text-xl font-bold mb-2 text-neutral-900">{dialog.title}</h3>
                     <p className="text-neutral-600 mb-6 text-sm leading-relaxed">{dialog.message}</p>
                     <div className="flex justify-end gap-3">
-                        {dialog.type === 'confirm' && (<button onClick={onClose} disabled={confirming} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>)}
-                        <button onClick={handleConfirm} disabled={confirming} className={`px-5 py-2.5 text-white font-medium rounded-xl transition text-sm ${confirming ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 active:scale-95'}`}>{confirming ? 'Procesando...' : dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}</button>
+                        {dialog.type === 'confirm' && (<button type="button" onClick={onClose} disabled={confirming} className="px-5 py-2.5 text-neutral-500 font-medium hover:bg-neutral-100 rounded-xl transition text-sm">Cancelar</button>)}
+                        <button type="button" onClick={handleConfirm} disabled={confirming} className={`px-5 py-2.5 text-white font-medium rounded-xl transition text-sm ${confirming ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 active:scale-95'}`}>{confirming ? 'Procesando...' : dialog.type === 'confirm' ? 'Aceptar' : 'Entendido'}</button>
                     </div>
                 </div>
             </div>
         );
     };
+
+    // ===================== LANDING PAGE (PRE-PÁGINA SIN IMÁGENES) =====================
+    function LandingView({ onStart }) {
+        return (
+            <div className="min-h-screen bg-brand-50 font-sans text-neutral-900 selection:bg-brand-200">
+                <nav className="flex justify-between items-center p-6 lg:px-12 max-w-7xl mx-auto">
+                    <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg shadow-brand-600/30">&#128197;</div>
+                        <span className="text-xl font-bold tracking-tight">Turno Fácil<span className="text-brand-600">Pro</span></span>
+                    </div>
+                    <button type="button" onClick={onStart} className="bg-white text-brand-700 hover:bg-brand-50 border border-brand-100 px-6 py-2.5 rounded-full font-semibold transition shadow-sm text-sm">
+                        Ingresar / Registrarse
+                    </button>
+                </nav>
+
+                <header className="max-w-4xl mx-auto px-6 lg:px-12 py-20 lg:py-32 flex flex-col items-center text-center">
+                    <div className="space-y-8 fade-in flex flex-col items-center">
+                        <div className="inline-block bg-brand-100 text-brand-700 px-5 py-2 rounded-full text-sm font-bold border border-brand-200">
+                            🚀 Simplifica tu negocio
+                        </div>
+                        <h1 className="text-5xl lg:text-7xl font-extrabold leading-[1.1] tracking-tighter text-neutral-900">
+                            Tu agenda en <br className="hidden sm:block"/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-500">piloto automático</span>
+                        </h1>
+                        <p className="text-xl text-neutral-500 leading-relaxed max-w-2xl font-medium">
+                            Olvídate de responder mensajes para dar turnos. Turno Fácil Pro es la herramienta definitiva para profesionales que quieren ahorrar tiempo, modernizar su atención y organizar sus días sin estrés.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-4 pt-6">
+                            <button type="button" onClick={onStart} className="bg-brand-600 hover:bg-brand-700 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-xl shadow-brand-600/30 flex items-center justify-center gap-2 active:scale-95">
+                                Comenzar prueba gratis
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <section className="bg-white py-24 border-t border-neutral-100">
+                    <div className="max-w-7xl mx-auto px-6 lg:px-12">
+                        <div className="text-center mb-16">
+                            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight mb-4">Una plataforma, dos experiencias perfectas</h2>
+                            <p className="text-lg text-neutral-500 max-w-2xl mx-auto">Diseñada pensando tanto en tu comodidad como administrador, como en la facilidad de uso para tus clientes.</p>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="bg-brand-50 rounded-4xl p-8 lg:p-10 border border-brand-100 hover:shadow-xl transition duration-300">
+                                <div className="w-14 h-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg"><IconBriefcase /></div>
+                                <h3 className="text-2xl font-bold mb-4 text-brand-900">Para el Profesional 👨‍💼</h3>
+                                <ul className="space-y-4 text-brand-800">
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🎨</span>
+                                        <span><strong>Personalización Total:</strong> Tu propio link con tu logo, precio, color de marca y horarios de atención.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">📊</span>
+                                        <span><strong>Estadísticas Avanzadas:</strong> Controlá presentismo, clientes frecuentes y turnos cancelados de un vistazo.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🚫</span>
+                                        <span><strong>Gestión de Días:</strong> Bloqueá feriados o vacaciones fácilmente para evitar reservas indeseadas.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">📱</span>
+                                        <span><strong>Integración WhatsApp:</strong> Plantillas automáticas para confirmar turnos con un solo clic.</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div className="bg-emerald-50 rounded-4xl p-8 lg:p-10 border border-emerald-100 hover:shadow-xl transition duration-300">
+                                <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg"><IconUser /></div>
+                                <h3 className="text-2xl font-bold mb-4 text-emerald-900">Para tus Clientes 🤳</h3>
+                                <ul className="space-y-4 text-emerald-800">
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">⚡</span>
+                                        <span><strong>Reserva en segundos:</strong> Sin descargar apps, ni crear usuarios. Ingresan sus datos y listo.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🔒</span>
+                                        <span><strong>Sistema Anti-choques:</strong> Al elegir un horario, se bloquea por 2 minutos para que nadie más lo quite.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">📅</span>
+                                        <span><strong>Autogestión:</strong> Pueden cancelar o reprogramar sus propios turnos de forma segura.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🗺️</span>
+                                        <span><strong>Ubicación y Calendario:</strong> Botón directo para Google Maps y descarga del evento a su calendario.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="py-24 px-6 max-w-3xl mx-auto text-center">
+                    <h2 className="text-4xl font-bold mb-6 tracking-tight">¿Listo para profesionalizar tu servicio?</h2>
+                    <p className="text-lg text-neutral-500 mb-10 max-w-xl mx-auto">Únete a los profesionales que ya no pierden tiempo anotando turnos en papel o por chat. Prueba todas las funciones hoy mismo.</p>
+                    <button type="button" onClick={onStart} className="bg-neutral-900 hover:bg-neutral-800 text-white px-10 py-4 rounded-2xl font-bold text-lg transition shadow-xl active:scale-95">
+                        Crear mi cuenta gratis
+                    </button>
+                </section>
+
+                <footer className="border-t border-neutral-200 py-8 text-center text-neutral-400 text-sm">
+                    <p>© {new Date().getFullYear()} Turno Fácil Pro. Todos los derechos reservados.</p>
+                </footer>
+            </div>
+        );
+    }
 
     // ===================== APP =====================
     function App() {
@@ -275,26 +402,48 @@
             const unsub = auth.onAuthStateChanged(async (u) => {
                 setUser(u);
                 if (p) { 
-                    setProfId(p); setView('client'); if (!u) auth.signInAnonymously().catch(() => {}); 
+                    // Si el parámetro es largo, asumimos que es el UID.
+                    // Si es corto, asumimos que es un link personalizado (slug).
+                    if (p.length > 20) {
+                        setProfId(p); 
+                        setView('client'); 
+                    } else {
+                        try {
+                            const snap = await db.collection("professionals").where("slug", "==", p).limit(1).get();
+                            if (!snap.empty) {
+                                setProfId(snap.docs[0].id);
+                                setView('client');
+                            } else {
+                                alert("No pudimos encontrar este negocio. Revisa el link.");
+                                setView('landing');
+                            }
+                        } catch(e) {
+                            setView('landing');
+                        }
+                    }
                 } else if (u && !u.isAnonymous) { 
                     const checkedUid = u.uid;
                     try {
                         const adminDoc = await db.collection("admins").doc(checkedUid).get();
-                        // Verificar que el usuario no cambió mientras esperábamos la respuesta de Firestore
                         if (auth.currentUser?.uid !== checkedUid) return;
                         if (adminDoc.exists) { setView('superadmin'); } else { setView('admin'); }
                     } catch (error) { if (auth.currentUser?.uid === checkedUid) setView('admin'); }
                 } else { 
-                    setView('admin'); 
+                    setView('landing'); 
                 }
             });
             return () => unsub();
         }, []);
 
         if (view === 'loading') return <Spinner />;
+
+        const startApp = () => setView('auth');
+
         return (
             <>
-                {view === 'client' ? <ClientView profId={profId} setDialog={setDialog} setToast={setToast} /> : 
+                {view === 'landing' ? <LandingView onStart={startApp} /> :
+                 view === 'auth' ? <AuthScreen setDialog={setDialog} setToast={setToast} /> :
+                 view === 'client' ? <ClientView profId={profId} setDialog={setDialog} setToast={setToast} /> : 
                  view === 'superadmin' ? <SuperAdminView user={user} setDialog={setDialog} setToast={setToast} /> : 
                  <AdminView user={user} setDialog={setDialog} setToast={setToast} />}
                 <CustomDialog dialog={dialog} onClose={() => setDialog(null)} />
@@ -334,18 +483,17 @@
                     try {
                         await db.collection("professionals").doc(res.user.uid).set({
                             name: e.target.name.value, business: e.target.business.value,
-                            service: e.target.service.value, phone: fullPhone, email: e.target.email.value,
+                            service: e.target.service.value, price: '', phone: fullPhone, email: e.target.email.value,
                             waTemplate: DEFAULT_WA_TEMPLATE,
                             licenseExpiresAt: expirationDate.toISOString(),
                             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                             subscriptionStatus: 'trial', 
                             isSuspended: false,
-                            themeColor: '#4f46e5', logoBase64: '',
-                            config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, maxPerDay:0, blockedDates:[] }
+                            themeColor: '#4f46e5', logoBase64: '', slug: '',
+                            config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, maxPerDay:0, blockedDates:[], notificationsEnabled: true }
                         });
                         setToast({ type:'success', message: 'Cuenta creada con éxito' });
                     } catch(dbErr) {
-                        // Si falla Firestore, borrar el usuario de Auth para no dejar un estado inconsistente
                         await res.user.delete().catch(() => {});
                         throw dbErr;
                     }
@@ -373,9 +521,9 @@
                         
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {mode === 'register' && (<>
-                                <input name="name" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required />
-                                <input name="business" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required />
-                                <input name="service" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required />
+                                <input name="name" maxLength="50" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Tu nombre" required />
+                                <input name="business" maxLength="50" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="Nombre de tu negocio" required />
+                                <input name="service" maxLength="50" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 text-sm" placeholder="¿A qué te dedicás?" required />
                                 <PhoneInput prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value)} required />
                             </>)}
                             
@@ -418,9 +566,9 @@
                         </form>
                         
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && <button onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
-                            {mode === 'login' && <button onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
-                            {mode !== 'login' && <button onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
+                            {mode !== 'register' && <button type="button" onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
+                            {mode === 'login' && <button type="button" onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
+                            {mode !== 'login' && <button type="button" onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
                     </div>
                 </div>
@@ -449,8 +597,6 @@
                     if(doc.exists) {
                         const data = doc.data();
                         setSettings(data);
-                        // Solo sincronizar los inputs la primera vez — igual que logo/teléfono en AdminView
-                        // Evita pisar lo que el admin está escribiendo cuando llega un snapshot por el otro precio
                         if (!settingsInputsInitialized) {
                             settingsInputsInitialized = true;
                             setMpPriceInput(data.mpPrice || '5000');
@@ -489,7 +635,6 @@
                 onConfirm: async () => {
                     try {
                         const now = new Date();
-                        // Soporta tanto string ISO como Timestamp de Firestore
                         const rawExp = prof.licenseExpiresAt;
                         const currentExp = rawExp ? (rawExp?.toDate ? rawExp.toDate() : new Date(rawExp)) : now;
                         const baseDate = currentExp > now ? new Date(currentExp) : new Date(now);
@@ -522,17 +667,17 @@
         const deleteProf = async (prof) => {
             setDialog({
                 type: 'confirm', title: 'Borrar Permanentemente',
-                message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos de Firestore. El usuario de Auth no se borra (no es posible desde el cliente). Esto no se deshace.`,
+                message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos (incluyendo listas de espera). El usuario de Auth no se borra (no es posible desde el cliente). Esto no se deshace.`,
                 onConfirm: async () => {
                     setLoading(true);
                     try {
-                        const [apts, holds] = await Promise.all([
+                        const [apts, holds, waitlists] = await Promise.all([
                             db.collection("appointments").where("profId", "==", prof.id).get(),
-                            db.collection("holds").where("profId", "==", prof.id).get()
+                            db.collection("holds").where("profId", "==", prof.id).get(),
+                            db.collection("waitlists").where("profId", "==", prof.id).get()
                         ]);
-                        // Firestore batch tiene límite de 500 operaciones — dividir en chunks
                         const chunkSize = 499;
-                        const docs = [...apts.docs, ...holds.docs, { ref: db.collection("professionals").doc(prof.id) }];
+                        const docs = [...apts.docs, ...holds.docs, ...waitlists.docs, { ref: db.collection("professionals").doc(prof.id) }];
                         for (let i = 0; i < docs.length; i += chunkSize) {
                             const batch = db.batch();
                             docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref));
@@ -540,6 +685,7 @@
                         }
                         setToast({ type:'success', message: 'Datos borrados. Eliminá el usuario de Firebase Auth manualmente.' });
                     } catch(err) {
+                        console.error(err);
                         setToast({ type:'error', message: 'Error al borrar. Intentá de nuevo.' });
                     } finally { setLoading(false); }
                 }
@@ -557,19 +703,18 @@
                         <span className="text-sm font-bold text-red-600 tracking-widest uppercase"><IconShield className="inline w-4 h-4 mr-1"/> Super Admin</span>
                         <h1 className="text-3xl font-bold text-neutral-950">Turno Fácil Pro</h1>
                     </div>
-                    <button onClick={() => auth.signOut()} className="text-neutral-500 hover:text-red-600 font-medium text-sm flex items-center gap-2">
+                    <button type="button" onClick={() => auth.signOut()} className="text-neutral-500 hover:text-red-600 font-medium text-sm flex items-center gap-2">
                         <IconLogout /> Salir
                     </button>
                 </header>
 
                 <div className="flex gap-2 mb-6 bg-white p-2 rounded-2xl border border-neutral-100 shadow-sm w-max">
-                    <button onClick={() => setTab('licenses')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='licenses' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Lista de Licencias</button>
-                    <button onClick={() => setTab('settings')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='settings' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Configuración de Pagos</button>
+                    <button type="button" onClick={() => setTab('licenses')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='licenses' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Lista de Licencias</button>
+                    <button type="button" onClick={() => setTab('settings')} className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition ${tab==='settings' ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:text-neutral-900'}`}>Configuración de Pagos</button>
                 </div>
 
                 {tab === 'settings' && (
                     <div className="fade-in grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-                        {/* CARD: PRECIO MERCADO PAGO */}
                         <div className="bg-green-50 border border-green-200 p-6 rounded-3xl shadow-sm">
                             <h3 className="font-bold text-green-800 flex items-center gap-2 mb-2"><IconCard /> PRECIO EN MERCADO PAGO (ARS)</h3>
                             <p className="text-sm text-green-700 mb-4">Este monto se muestra en el botón de pago de Mercado Pago. Guardalo en Firebase sin tocar el código.</p>
@@ -585,7 +730,6 @@
                             </form>
                         </div>
 
-                        {/* CARD: PRECIO PAYPAL */}
                         <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl shadow-sm">
                             <h3 className="font-bold text-blue-800 flex items-center gap-2 mb-2"><IconGlobe /> PRECIO EN PAYPAL (USD)</h3>
                             <p className="text-sm text-blue-700 mb-4">Este monto se usa para generar el link automático hacia tu cuenta de PayPal.</p>
@@ -623,7 +767,6 @@
                                         <p className="text-sm text-neutral-500">{p.name} · {p.email}</p>
                                         <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-sm font-bold text-emerald-600 mt-1 block hover:underline">{p.phone}</a>
                                         {(() => {
-                                            // Fecha de alta: usar createdAt si existe, sino derivar de licenseExpiresAt - 30 días (solo preciso para trials originales)
                                             let altaDate = null;
                                             if (p.createdAt) {
                                                 altaDate = p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt);
@@ -644,11 +787,11 @@
                                          <span className="inline-block bg-emerald-100 text-emerald-800 px-3 py-1 rounded-lg text-xs font-bold">Pagado ({daysText})</span>}
                                     </div>
                                     
-                                    <button onClick={() => renewLicense(p)} className="w-full bg-neutral-900 text-white py-2.5 rounded-xl text-sm font-bold mt-4 mb-2 hover:bg-neutral-800 active:scale-95 transition">Renovar (+30 días)</button>
+                                    <button type="button" onClick={() => renewLicense(p)} className="w-full bg-neutral-900 text-white py-2.5 rounded-xl text-sm font-bold mt-4 mb-2 hover:bg-neutral-800 active:scale-95 transition">Renovar (+30 días)</button>
                                     
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-200 active:scale-95 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
-                                        <button onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2.5 rounded-xl text-sm font-bold hover:bg-red-200 active:scale-95 transition">Borrar Físico</button>
+                                        <button type="button" onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-200 active:scale-95 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
+                                        <button type="button" onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2.5 rounded-xl text-sm font-bold hover:bg-red-200 active:scale-95 transition">Borrar Físico</button>
                                     </div>
                                 </div>
                             )})}
@@ -659,7 +802,7 @@
         );
     }
 
-    // ===================== PAYWALL VIEW (REUTILIZABLE PARA RENOVACIÓN) =====================
+    // ===================== PAYWALL VIEW =====================
     function PaywallView({ userEmail, isSuspended, onClose }) {
         const [settings, setSettings] = useState(null);
         
@@ -680,12 +823,11 @@
         const paypalLink = settings ? `https://paypal.me/MatiasRodriguez1789/${settings.paypalPrice}usd` : '#';
         const formattedMpPrice = settings ? Number(settings.mpPrice || 5000).toLocaleString('es-AR') : null;
 
-        // Si existe onClose, significa que estamos viendo esto como Modal (renovación anticipada)
         if (onClose) {
             return (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4">
                     <div className="bg-white p-8 rounded-4xl shadow-2xl max-w-md w-full border border-neutral-100 text-center relative">
-                        <button onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
+                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
                         <div className={`w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl`}>&#11088;</div>
                         <h2 className="text-xl font-bold tracking-tight mb-2">Renovación Anticipada</h2>
                         <p className="text-neutral-500 text-xs mb-6">Sumá 30 días a tu licencia actual sin esperar a que se corte el servicio.</p>
@@ -713,7 +855,6 @@
             );
         }
 
-        // Vista de Paywall normal (bloqueo total)
         return (
             <div className="min-h-screen bg-brand-50 flex items-center justify-center p-6 fade-in">
                 <div className="bg-white p-8 rounded-4xl shadow-xl max-w-md w-full border border-neutral-100 text-center">
@@ -749,7 +890,7 @@
                             <IconWhatsapp /> Enviar comprobante
                         </a>
                     </div>
-                    <button onClick={() => auth.signOut()} className="mt-8 text-sm font-medium text-neutral-400 hover:text-neutral-600 underline">Cerrar Sesión</button>
+                    <button type="button" onClick={() => auth.signOut()} className="mt-8 text-sm font-medium text-neutral-400 hover:text-neutral-600 underline">Cerrar Sesión</button>
                 </div>
             </div>
         );
@@ -783,10 +924,9 @@
         if (selDate && profile?.config && !loadingSlots) {
             const dayIsWorking = profile.config.workingDays.includes(parseDateLocal(selDate).getDay());
             isBlockedDay = (profile.config.blockedDates||[]).includes(selDate);
-            if (dayIsWorking) {
-                // El profesional puede ignorar maxPerDay y días bloqueados, pero no slots ya ocupados
-                availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
-            } else {
+            
+            availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            if (!dayIsWorking) {
                 isDayUnavailable = true;
             }
         }
@@ -806,8 +946,8 @@
                     dni: e.target.manualDni?.value || '',
                     phone: buildPhone(manualPrefix, manualPhone),
                     notes: e.target.manualNotes?.value || '',
-                    clientUid: profId,   // el uid del profesional — necesario para que la regla de Firestore acepte el create
-                    addedManually: true, // marca para identificar que lo cargó el profesional
+                    clientUid: profId,
+                    addedManually: true, 
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 const holdRef = db.collection("holds").doc(slotId);
@@ -815,7 +955,7 @@
                     const slotDoc = await tx.get(slotRef);
                     if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado.");
                     tx.set(slotRef, aptData);
-                    tx.delete(holdRef); // Liberar hold si algún cliente lo tenía reservado
+                    tx.delete(holdRef);
                 });
                 setToast({ type:'success', message:'¡Turno agregado correctamente!' });
                 onClose();
@@ -827,19 +967,17 @@
         return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
                 <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-2xl max-w-md w-full border border-neutral-100 relative max-h-[92vh] overflow-y-auto">
-                    <button onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
+                    <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
                     <h2 className="text-xl font-bold mb-1">Agregar Turno Manual</h2>
                     <p className="text-sm text-neutral-500 mb-6">Reservá un turno en nombre de un cliente.</p>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Fecha */}
                         <div>
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Fecha</label>
                             <input type="date" min={today} value={selDate} onChange={e => { if (e.target.value) setSelDate(e.target.value); }}
                                 className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium focus:border-brand-600" required />
                         </div>
 
-                        {/* Slots */}
                         {selDate && (
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Horario Disponible</label>
@@ -848,9 +986,12 @@
                                         ⚠️ Este día está bloqueado para clientes, pero podés reservar igual como profesional.
                                     </div>
                                 )}
-                                {isDayUnavailable ? (
-                                    <div className="text-center py-4 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200">🚫 Día no laborable</div>
-                                ) : loadingSlots ? (
+                                {isDayUnavailable && availableSlots.length > 0 && (
+                                    <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                                        ⚠️ Este día no es laborable según tu configuración, pero podés forzar el turno.
+                                    </div>
+                                )}
+                                {loadingSlots ? (
                                     <div className="text-center py-4 text-sm text-neutral-400 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-center gap-2">
                                         <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...
                                     </div>
@@ -868,15 +1009,14 @@
                             </div>
                         )}
 
-                        {/* Datos del cliente */}
                         <div className={`space-y-3 border-t border-neutral-100 pt-4 transition-all ${!selTime ? 'opacity-50 pointer-events-none' : ''}`}>
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre y Apellido</label>
-                                <input name="manualClient" placeholder="Ej: Juan Pérez" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" required />
+                                <input name="manualClient" maxLength="50" placeholder="Ej: Juan Pérez" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" required />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">DNI <span className="normal-case font-normal text-neutral-400">(opcional)</span></label>
-                                <input name="manualDni" placeholder="Sin puntos" inputMode="numeric" pattern="[0-9]*" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
+                                <input name="manualDni" maxLength="15" placeholder="Sin puntos" inputMode="numeric" pattern="[0-9]*" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label>
@@ -884,7 +1024,7 @@
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nota (opcional)</label>
-                                <input name="manualNotes" placeholder="Alguna observación..." className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
+                                <input name="manualNotes" maxLength="200" placeholder="Alguna observación..." className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
                             </div>
                         </div>
 
@@ -897,8 +1037,8 @@
         );
     }
 
-    // ===================== MAP PICKER MODAL =====================
-    function MapPickerModal({ currentAddress, onConfirm, onClose }) {
+    // ===================== MAP PICKER MODAL (LEAFLET + GPS) =====================
+    function MapPickerModal({ currentAddress, onConfirm, onClose, setToast }) {
         const mapRef = useRef(null);
         const leafletMap = useRef(null);
         const markerRef = useRef(null);
@@ -913,9 +1053,8 @@
         }, []);
 
         useEffect(() => {
-            if (leafletMap.current) return; // ya iniciado
+            if (leafletMap.current) return; 
 
-            // Coordenadas iniciales: Buenos Aires
             const defaultLat = -34.6037;
             const defaultLng = -58.3816;
 
@@ -926,11 +1065,8 @@
                 maxZoom: 19,
             }).addTo(leafletMap.current);
 
-            // El modal tiene animación fade-in: el contenedor puede tener dimensiones incorrectas al init.
-            // invalidateSize() fuerza a Leaflet a recalcular el tamaño real del contenedor.
-            setTimeout(() => { if (leafletMap.current) leafletMap.current.invalidateSize(); }, 350);
+            const timer = setTimeout(() => { if (leafletMap.current) leafletMap.current.invalidateSize(); }, 350);
 
-            // Marcador arrastrable
             markerRef.current = L.marker([defaultLat, defaultLng], { draggable: true })
                 .addTo(leafletMap.current)
                 .bindPopup('Arrastrá el marcador a tu ubicación')
@@ -943,17 +1079,16 @@
 
             markerRef.current.on('dragend', onMarkerMove);
 
-            // Click en el mapa mueve el marcador
             leafletMap.current.on('click', async (e) => {
                 const { lat, lng } = e.latlng;
                 markerRef.current.setLatLng([lat, lng]);
                 await reverseGeocode(lat, lng);
             });
 
-            // Si hay dirección previa, geocodificarla y centrar el mapa
             if (currentAddress) searchByAddress(currentAddress, true);
 
             return () => {
+                clearTimeout(timer);
                 if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; }
             };
         }, []);
@@ -962,13 +1097,12 @@
             if (!mountedRef.current) return;
             setLoading(true);
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es`, {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es&email=soporte@tudominio.com`, {
                     headers: { 'Accept-Language': 'es' }
                 });
                 const data = await res.json();
                 if (!mountedRef.current) return;
                 const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-                // Formatear más limpio: calle número, ciudad
                 const a = data.address || {};
                 const clean = [
                     a.road && (a.house_number ? `${a.road} ${a.house_number}` : a.road),
@@ -986,7 +1120,7 @@
             if (!query.trim() || !mountedRef.current) return;
             setLoading(true);
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=es`);
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=es&email=soporte@tudominio.com`);
                 const data = await res.json();
                 if (!mountedRef.current) return;
                 if (data.length > 0) {
@@ -1002,13 +1136,36 @@
             finally { if (mountedRef.current) setLoading(false); }
         };
 
+        const handleGPS = () => {
+            if (!navigator.geolocation) {
+                setToast({type: 'error', message: 'Tu navegador no soporta geolocalización.'});
+                return;
+            }
+            setLoading(true);
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    if (leafletMap.current && markerRef.current) {
+                        leafletMap.current.setView([lat, lng], 17);
+                        markerRef.current.setLatLng([lat, lng]);
+                        await reverseGeocode(lat, lng);
+                    }
+                },
+                () => {
+                    setLoading(false);
+                    setToast({type: 'error', message: 'No se pudo obtener tu ubicación. Verifica permisos.'});
+                },
+                { enableHighAccuracy: true }
+            );
+        };
+
         return (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
                 <div className="bg-white rounded-4xl shadow-2xl max-w-lg w-full border border-neutral-100 overflow-hidden relative flex flex-col" style={{maxHeight:'90vh'}}>
                     <div className="p-5 border-b border-neutral-100">
-                        <button onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
+                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
                         <h2 className="text-lg font-bold mb-3 pr-8">📍 Seleccionar dirección</h2>
-                        {/* Buscador */}
                         <div className="flex gap-2">
                             <input
                                 type="text"
@@ -1019,20 +1176,28 @@
                                 className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600"
                             />
                             <button
+                                type="button"
                                 onClick={() => searchByAddress(searchInput)}
                                 disabled={loading}
                                 className="bg-brand-600 text-white px-4 py-3 rounded-2xl text-sm font-semibold active:scale-95 transition disabled:bg-brand-300"
                             >
                                 {loading ? '...' : 'Buscar'}
                             </button>
+                            <button
+                                type="button"
+                                onClick={handleGPS}
+                                disabled={loading}
+                                title="Usar mi ubicación actual"
+                                className="bg-neutral-900 text-white px-4 py-3 rounded-2xl text-sm font-semibold active:scale-95 transition disabled:bg-neutral-600"
+                            >
+                                GPS
+                            </button>
                         </div>
-                        <p className="text-xs text-neutral-400 mt-2">También podés tocar el mapa o arrastrar el marcador 📌</p>
+                        <p className="text-xs text-neutral-400 mt-2">Mové el pin azul o usa el GPS para mayor precisión.</p>
                     </div>
 
-                    {/* Mapa */}
-                    <div ref={mapRef} style={{height:'320px', width:'100%'}}></div>
+                    <div ref={mapRef} style={{height:'320px', width:'100%', zIndex: 1}}></div>
 
-                    {/* Dirección seleccionada + confirmar */}
                     <div className="p-5 border-t border-neutral-100">
                         {loading ? (
                             <div className="flex items-center gap-2 text-sm text-neutral-400 mb-3">
@@ -1045,8 +1210,9 @@
                             <p className="text-sm text-neutral-400 mb-3">Seleccioná un punto en el mapa</p>
                         )}
                         <div className="flex gap-2">
-                            <button onClick={onClose} className="flex-1 py-3 rounded-2xl border border-neutral-200 text-neutral-600 text-sm font-medium active:scale-95 transition">Cancelar</button>
+                            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-2xl border border-neutral-200 text-neutral-600 text-sm font-medium active:scale-95 transition">Cancelar</button>
                             <button
+                                type="button"
                                 onClick={() => { if (pickedAddress) { onConfirm(pickedAddress); onClose(); } }}
                                 disabled={!pickedAddress || loading}
                                 className={`flex-1 py-3 rounded-2xl text-white text-sm font-semibold active:scale-95 transition ${!pickedAddress || loading ? 'bg-brand-300 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700'}`}
@@ -1072,7 +1238,6 @@
             if (blocked.includes(newDate)) { setToast({type:'error', message:'Esa fecha ya está bloqueada'}); return; }
             setSaving(true);
             try {
-                // Al agregar, también limpiar fechas pasadas para no acumular basura en Firestore
                 const updated = [...blocked.filter(d => d >= today), newDate].sort();
                 await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
                 setNewDate('');
@@ -1083,7 +1248,6 @@
         const removeDate = async (date) => {
             setSaving(true);
             try {
-                // Al quitar, también limpiar todas las fechas pasadas
                 const updated = blocked.filter(d => d !== date && d >= today);
                 await db.collection("professionals").doc(profId).update({ 'config.blockedDates': updated });
                 setToast({type:'success', message:'Fecha desbloqueada'});
@@ -1094,10 +1258,10 @@
             <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
                 <h2 className="text-xl font-semibold mb-1 flex items-center gap-2">🚫 Días Bloqueados</h2>
                 <p className="text-sm text-neutral-500 mb-5">Marcá feriados, vacaciones o cualquier fecha en que no atendés. Los clientes no podrán reservar esos días.</p>
-                <div className="flex gap-2 mb-5">
+                <div className="flex flex-col sm:flex-row gap-2 mb-5">
                     <input type="date" min={today} value={newDate} onChange={e => setNewDate(e.target.value)}
                         className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600" />
-                    <button onClick={addDate} disabled={saving || !newDate} className="bg-brand-600 text-white px-5 py-3 rounded-2xl text-sm font-semibold active:scale-95 transition disabled:bg-brand-300">
+                    <button type="button" onClick={addDate} disabled={saving || !newDate} className="bg-brand-600 text-white px-6 py-3 rounded-2xl text-sm font-semibold active:scale-95 transition disabled:bg-brand-300 w-full sm:w-auto">
                         Bloquear
                     </button>
                 </div>
@@ -1108,7 +1272,7 @@
                         {blocked.filter(d => d >= today).map(d => (
                             <div key={d} className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
                                 <span className="font-semibold text-red-700 text-sm">🚫 {formatDate(d)}</span>
-                                <button onClick={() => removeDate(d)} disabled={saving} className="text-red-400 hover:text-red-700 transition text-xs font-bold">Quitar</button>
+                                <button type="button" onClick={() => removeDate(d)} disabled={saving} className="text-red-400 hover:text-red-700 transition text-xs font-bold px-2 py-1">Quitar</button>
                             </div>
                         ))}
                     </div>
@@ -1151,16 +1315,16 @@
                 {a.notes && <p className="mt-3 text-xs text-neutral-500 bg-neutral-50 rounded-xl p-2.5 border border-neutral-100">{a.notes}</p>}
                 {a.internalNote && <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-xl p-2.5 border border-amber-200 flex items-start gap-1.5"><IconNote /> {a.internalNote}</p>}
                 <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
-                    <button disabled={savingAtt} onClick={() => toggleAttended(true)}
+                    <button type="button" disabled={savingAtt} onClick={() => toggleAttended(true)}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition border ${a.attended === true ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-emerald-50 text-emerald-700 border-emerald-200'} ${savingAtt ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >✅ Vino</button>
-                    <button disabled={savingAtt} onClick={() => toggleAttended(false)}
+                    <button type="button" disabled={savingAtt} onClick={() => toggleAttended(false)}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition border ${a.attended === false ? 'bg-red-500 text-white border-red-500' : 'bg-red-50 text-red-600 border-red-200'} ${savingAtt ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >❌ No vino</button>
                     <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition">
                         <IconWhatsapp />
                     </a>
-                    <button onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                    <button type="button" onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
                         <IconTrash />
                     </button>
                 </div>
@@ -1173,23 +1337,24 @@
         const [profile, setProfile]       = useState(null);
         const [apts, setApts]             = useState([]);
         const [pastApts, setPastApts]     = useState([]);
+        const [waitlist, setWaitlist]     = useState([]);
         const [loading, setLoading]       = useState(true);
         const [activeTab, setActiveTab]   = useState('appointments');
         const [profPhonePrefix, setProfPhonePrefix] = useState('54');
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
         const [logoPreview, setLogoPreview] = useState('');
         const [aptSearch, setAptSearch]   = useState('');
-        const [notesModal, setNotesModal] = useState(null); // {apt, value}
+        const [notesModal, setNotesModal] = useState(null);
         const [showMapPicker, setShowMapPicker] = useState(false);
         const [addressInput, setAddressInput] = useState('');
-        
-        // ESTADO PARA MOSTRAR EL MODAL DE RENOVACIÓN ANTICIPADA
         const [showRenewModal, setShowRenewModal] = useState(false);
         const [showAddModal, setShowAddModal] = useState(false);
         const [saving, setSaving] = useState(false);
 
-        const prevAptIds  = useRef(new Set()); const initialized = useRef(false);
+        const prevAptsRef  = useRef(new Map()); 
+        const initialized = useRef(false);
         const allAptsRef  = useRef([]);
+        const profileConfigRef = useRef(null);
 
         useEffect(() => {
             if (user && !user.isAnonymous) {
@@ -1199,13 +1364,25 @@
         }, [user]);
 
         useEffect(() => {
+            profileConfigRef.current = profile?.config;
+        }, [profile]);
+
+        useEffect(() => {
             if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
-            let active = true; let unsubApts = null;
+            let active = true; let unsubApts = null; let unsubWaitlist = null;
             let logoInitialized = false;
+            
             const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
                 (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } } else setProfile(null); setLoading(false); },
                 (err) => { console.warn('onSnapshot prof error:', err); if (!active) return; setLoading(false); }
             );
+
+            unsubWaitlist = db.collection("waitlists").where("profId", "==", user.uid).onSnapshot(snap => {
+                if(!active) return;
+                const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                setWaitlist(list);
+            });
+
             const subscribeApts = () => {
                 if (!active) return;
                 unsubApts = db.collection("appointments").where("profId","==",user.uid).onSnapshot(
@@ -1224,28 +1401,49 @@
                         };
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         allAptsRef.current = all;
+                        
                         const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
                         const sixtyStr = `${sixtyDaysAgo.getFullYear()}-${String(sixtyDaysAgo.getMonth()+1).padStart(2,'0')}-${String(sixtyDaysAgo.getDate()).padStart(2,'0')}`;
-                        // Cancelados: solo los de los últimos 60 días (no inundar el panel con cancelados viejos)
+                        
                         const newList = all.filter(a => !isPast(a) || (a.cancelled && a.date >= sixtyStr)).sort((a,b) => {
                             if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
                             return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                         });
                         const pastList = all.filter(a => isPast(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                        
                         setApts(newList); setPastApts(pastList);
+                        
                         if (initialized.current) {
-                            let alertTriggered = false;
-                            // Notificar solo nuevos turnos de clientes (no los que cargó el profesional manualmente)
-                            all.filter(a => !a.cancelled && !a.addedManually).forEach(apt => { if (!prevAptIds.current.has(apt.id)) { showNotification('Nuevo turno', `${apt.client} - ${apt.time}hs`); alertTriggered = true; }});
-                            if (alertTriggered) playNotificationSound();
+                            let playSound = false;
+                            const notifsEnabled = profileConfigRef.current?.notificationsEnabled !== false; 
+                            const prevMap = prevAptsRef.current;
+                            
+                            all.forEach(apt => {
+                                const prev = prevMap.get(apt.id);
+                                if (notifsEnabled) {
+                                    if (!prev && !apt.cancelled && !apt.addedManually) {
+                                        showNotification('¡Nuevo turno reservado!', `${apt.client} agendó para el ${formatDate(apt.date)} a las ${apt.time}hs.`);
+                                        playSound = true;
+                                    }
+                                    else if (prev && !prev.cancelled && apt.cancelled && (apt.cancelledBy === 'client' || apt.cancelledBy === 'client_reschedule')) {
+                                        showNotification('Turno cancelado', `${apt.client} canceló su turno del ${formatDate(apt.date)} a las ${apt.time}hs.`);
+                                        playSound = true;
+                                    }
+                                }
+                            });
+                            if (playSound) playNotificationSound();
                         }
-                        prevAptIds.current = new Set(all.map(a => a.id)); initialized.current = true;
+                        
+                        const newMap = new Map();
+                        all.forEach(a => newMap.set(a.id, { cancelled: a.cancelled, addedManually: a.addedManually }));
+                        prevAptsRef.current = newMap;
+                        initialized.current = true;
                     },
                     (err) => { console.warn('onSnapshot apts error:', err); }
                 );
             };
             subscribeApts();
-            // Recalcular próximos/pasados cada minuto sin esperar nuevo snapshot
+
             const minuteTimer = setInterval(() => {
                 if (!active || allAptsRef.current.length === 0) return;
                 const today = getTodayStr();
@@ -1265,10 +1463,9 @@
                 }));
                 setPastApts(all.filter(a => isPastNow(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
             }, 60000);
-            return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); };
+            return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); if (unsubWaitlist) unsubWaitlist(); };
         }, [user]);
 
-        // Sincronizar teléfono solo la primera vez que carga el perfil — igual que address
         const phoneSynced = useRef(false);
         useEffect(() => {
             if (profile?.phone && !phoneSynced.current) {
@@ -1280,7 +1477,6 @@
             }
         }, [profile]);
 
-        // Sincronizar dirección solo al cargar el perfil por primera vez — no en snapshots posteriores
         const addressSynced = useRef(false);
         useEffect(() => {
             if (profile && !addressSynced.current) {
@@ -1289,16 +1485,17 @@
             }
         }, [profile]);
 
-        if (!user || user.isAnonymous) return <AuthScreen setDialog={setDialog} setToast={setToast} />;
+        if (!user || user.isAnonymous) return null; 
         if (loading) return <Spinner />;
-        if (!profile) return <AuthScreen setDialog={setDialog} setToast={setToast} />;
+        if (!profile) { auth.signOut(); return <Spinner />; } 
 
         const daysLeft = getDaysLeft(profile.licenseExpiresAt);
         const isExpired = daysLeft <= 0;
         
         if (isExpired || profile.isSuspended) return <PaywallView userEmail={user.email} isSuspended={profile.isSuspended} />;
 
-        const shareUrl = window.location.origin + window.location.pathname + "?p=" + user.uid;
+        const displaySlug = profile.slug || user.uid;
+        const shareUrl = window.location.origin + window.location.pathname + "?p=" + displaySlug;
         
         const handleLogoUpload = (e) => {
             const file = e.target.files[0]; if (!file) return;
@@ -1314,7 +1511,6 @@
                 const canvas = document.createElement('canvas');
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d');
-                // Fondo blanco antes de dibujar — evita que PNGs con transparencia queden negros al convertir a JPEG
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, width, height);
                 ctx.drawImage(img, 0, 0, width, height);
@@ -1334,38 +1530,57 @@
             if (workingDays.length === 0) { setToast({ type:'error', message:'Seleccioná al menos un día de trabajo.' }); return; }
             const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
             if (local.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
+            
+            let slug = f.get('slug').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+            
             const startTime = f.get('startTime'); const endTime = f.get('endTime');
-            if (startTime >= endTime) { setToast({ type:'error', message:'El horario de inicio debe ser menor al de fin.' }); return; }
             const newDuration = Number(f.get('duration'));
             const durationChanged = newDuration !== (profile.config?.duration || 30);
             const activeApts = apts.filter(a => !a.cancelled).length;
-            // Advertir si cambia la duración y hay turnos próximos activos
+
+            setSaving(true);
+            
+            if (slug && slug !== profile.slug) {
+                try {
+                    const snap = await db.collection("professionals").where("slug", "==", slug).get();
+                    const exists = snap.docs.some(d => d.id !== user.uid);
+                    if (exists) { 
+                        setToast({ type:'error', message:'Ese link personalizado ya está en uso. Elegí otro.' }); 
+                        setSaving(false); 
+                        return; 
+                    }
+                } catch(e) { console.error(e); }
+            }
+            
             if (durationChanged && activeApts > 0) {
                 setDialog({
                     type:'confirm',
                     title:'⚠️ Cambio de duración',
                     message:`Tenés ${activeApts} turno${activeApts > 1 ? 's' : ''} activo${activeApts > 1 ? 's' : ''} reservado${activeApts > 1 ? 's' : ''} con ${profile.config?.duration || 30} min. Los existentes no cambian, pero los nuevos se generarán con ${newDuration} min. ¿Continuar?`,
-                    onConfirm: () => doSaveProfile(f, workingDays, local, newDuration)
+                    onConfirm: () => doSaveProfile(f, workingDays, local, newDuration, slug)
                 });
+                setSaving(false);
                 return;
             }
-            doSaveProfile(f, workingDays, local, newDuration);
+            doSaveProfile(f, workingDays, local, newDuration, slug);
         };
 
-        const doSaveProfile = async (f, workingDays, local, newDuration) => {
+        const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
             setSaving(true);
             try {
                 await db.collection("professionals").doc(user.uid).update({
                     name: f.get('name'), business: f.get('business'), service: f.get('service'),
+                    price: f.get('price') || '',
                     phone: f.get('phonePrefix') + local, waTemplate: f.get('waTemplate'),
                     address: addressInput.trim(),
-                    themeColor: f.get('themeColor'), logoBase64: logoPreview,
+                    themeColor: f.get('themeColor'), logoBase64: logoPreview, slug: slug || '',
                     config: {
                         workingDays,
                         startTime: f.get('startTime'), endTime: f.get('endTime'),
                         duration: newDuration,
                         maxPerDay: Number(f.get('maxPerDay')||0),
-                        blockedDates: profile.config?.blockedDates || []  // leído del estado actual de React, no de la closure del form
+                        blockedDates: profile.config?.blockedDates || [],
+                        notificationsEnabled: f.get('notificationsEnabled') === 'on'
                     }
                 });
                 const savedColor = f.get('themeColor');
@@ -1384,6 +1599,7 @@
                         currentAddress={addressInput}
                         onConfirm={(addr) => setAddressInput(addr)}
                         onClose={() => setShowMapPicker(false)}
+                        setToast={setToast}
                     />
                 )}
                 {showAddModal && (
@@ -1397,18 +1613,19 @@
                 {notesModal && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target===e.currentTarget) setNotesModal(null); }}>
                         <div className="bg-white p-6 rounded-4xl shadow-2xl max-w-sm w-full border border-neutral-100 relative">
-                            <button onClick={() => setNotesModal(null)} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
+                            <button type="button" onClick={() => setNotesModal(null)} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
                             <h3 className="font-bold text-lg mb-1">Nota Interna</h3>
                             <p className="text-xs text-neutral-500 mb-3">Solo vos podés ver esta nota. El cliente no la ve.</p>
                             <p className="text-sm font-medium text-neutral-700 mb-2">{notesModal.apt.client} — {formatDate(notesModal.apt.date)} {notesModal.apt.time}hs</p>
                             <textarea
                                 className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm outline-none focus:border-brand-600 resize-none"
                                 rows="4"
+                                maxLength="300"
                                 placeholder="Ej: cliente puntual, debe $500, alérgico a X..."
                                 value={notesModal.value}
                                 onChange={e => setNotesModal(prev => ({...prev, value: e.target.value}))}
                             />
-                            <button onClick={async () => {
+                            <button type="button" onClick={async () => {
                                 try {
                                     await db.collection("appointments").doc(notesModal.apt.id).update({ internalNote: notesModal.value });
                                     setToast({type:'success', message:'Nota guardada'});
@@ -1430,29 +1647,73 @@
                             <div className={`inline-block px-3 py-1 rounded-lg text-xs font-bold border ${daysLeft <= 5 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
                                 Licencia activa: {daysLeft} días restantes
                             </div>
-                            {/* BOTON DE RENOVACION ANTICIPADA */}
-                            <button onClick={() => setShowRenewModal(true)} style={{background:'linear-gradient(135deg,#f59e0b,#ef4444)',animation:'renewPulse 2s ease-in-out infinite'}} className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95">
+                            <button type="button" onClick={() => setShowRenewModal(true)} style={{background:'linear-gradient(135deg,#f59e0b,#ef4444)',animation:'renewPulse 2s ease-in-out infinite'}} className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-transform hover:scale-105 active:scale-95">
                                 🔥 Renovar ahora
                             </button>
                         </div>
                     </div>
                     <div className="flex flex-col items-end gap-3">
-                        <button onClick={() => auth.signOut()} className="text-neutral-400 hover:text-red-500 flex items-center gap-1.5 text-sm font-medium transition-colors"><IconLogout /> Cerrar Sesión</button>
+                        <button type="button" onClick={() => auth.signOut()} className="text-neutral-400 hover:text-red-500 flex items-center gap-1.5 text-sm font-medium transition-colors"><IconLogout /> Cerrar Sesión</button>
                         <div className="bg-white p-4 rounded-3xl border border-neutral-100 shadow-sm w-full sm:min-w-[300px]">
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Tu link de reservas</label>
                             <div className="flex items-center gap-2 bg-neutral-50 border rounded-xl p-1 px-3">
                                 <input type="text" readOnly value={shareUrl} className="flex-1 bg-transparent text-xs py-1.5 outline-none text-neutral-700 w-0" />
-                                <button onClick={() => { navigator.clipboard.writeText(shareUrl).then(() => setToast({type:'success', message:'¡Link copiado!'})).catch(() => setToast({type:'error', message:'No se pudo copiar. Copialo manualmente.'})); }} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
+                                <button type="button" onClick={() => { navigator.clipboard.writeText(shareUrl).then(() => setToast({type:'success', message:'¡Link copiado!'})).catch(() => setToast({type:'error', message:'No se pudo copiar. Copialo manualmente.'})); }} className="text-brand-600 p-1.5 rounded-lg hover:bg-brand-50"><IconCopy /></button>
                             </div>
                         </div>
                     </div>
                 </header>
 
                 <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl border border-neutral-100 shadow-sm flex-wrap">
-                    {[['appointments','Próximas Citas',<IconCalendar />],['history','Historial',<IconHistory />],['stats','Estadísticas',<IconChartBar />],['settings','Mi Perfil',<IconSettings />]].map(([tab,label,icon]) => (
-                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeTab===tab ? 'bg-brand-50 text-brand-700' : 'text-neutral-500 hover:text-neutral-800'}`}>{icon} {label}</button>
+                    {[
+                        ['appointments','Próximas Citas',<IconCalendar />],
+                        ['waitlist','Espera',<IconBell />],
+                        ['history','Historial',<IconHistory />],
+                        ['stats','Estadísticas',<IconChartBar />],
+                        ['settings','Mi Perfil',<IconSettings />]
+                    ].map(([tab,label,icon]) => (
+                        <button type="button" key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeTab===tab ? 'bg-brand-50 text-brand-700' : 'text-neutral-500 hover:text-neutral-800'}`}>
+                            {icon} {label}
+                            {tab === 'waitlist' && waitlist.filter(w => w.date >= getTodayStr()).length > 0 && (
+                                <span className="bg-brand-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">{waitlist.filter(w => w.date >= getTodayStr()).length}</span>
+                            )}
+                        </button>
                     ))}
                 </div>
+
+                {activeTab === 'waitlist' && (
+                    <div className="fade-in">
+                        <h2 className="text-2xl font-semibold mb-2">Lista de Espera</h2>
+                        <p className="text-neutral-500 text-sm mb-6">Clientes que desean ser avisados si se libera un turno.</p>
+                        
+                        {waitlist.filter(w => w.date >= getTodayStr()).length === 0 ? (
+                            <p className="p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay nadie en la lista de espera actualmente.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {waitlist.filter(w => w.date >= getTodayStr()).sort((a,b) => a.date.localeCompare(b.date)).map(w => (
+                                    <div key={w.id} className="bg-white p-6 rounded-3xl shadow-sm border border-neutral-100 relative">
+                                        <div className="font-bold px-3 py-1.5 rounded-xl text-sm border inline-block mb-3 bg-neutral-50 text-neutral-700 border-neutral-200">Para el {formatDate(w.date)}</div>
+                                        <div className="font-bold text-neutral-950 uppercase text-lg">{w.client}</div>
+                                        <div className="text-emerald-600 text-sm font-medium mt-1">{w.phone}</div>
+                                        <div className="flex gap-2 pt-4 mt-4 border-t border-neutral-100">
+                                            <a href={`https://wa.me/${w.phone}?text=${encodeURIComponent(`Hola ${w.client}! Estás en la lista de espera para el ${formatDate(w.date)} en ${profile.business}. Se acaba de liberar un turno, ¿te interesa?`)}`} target="_blank" className="flex-1 text-emerald-700 bg-emerald-50 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition">
+                                                <IconWhatsapp /> Avisar
+                                            </a>
+                                            <button type="button" onClick={async () => {
+                                                try {
+                                                    await db.collection('waitlists').doc(w.id).delete();
+                                                    setToast({type:'success', message:'Eliminado de la lista'});
+                                                } catch(e) { setToast({type:'error', message:'Error al eliminar'}); }
+                                            }} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Borrar">
+                                                <IconTrash />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {activeTab === 'history' && (
                     <div className="fade-in">
@@ -1470,7 +1731,7 @@
                     <div className="fade-in">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                             <h2 className="text-2xl font-semibold">Turnos Programados</h2>
-                            <button onClick={() => setShowAddModal(true)} className="bg-brand-600 text-white px-4 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm hover:bg-brand-700">
+                            <button type="button" onClick={() => setShowAddModal(true)} className="bg-brand-600 text-white px-4 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 active:scale-95 transition shadow-sm hover:bg-brand-700">
                                 ➕ Agregar Turno
                             </button>
                         </div>
@@ -1508,16 +1769,16 @@
                                                     <IconWhatsapp /> Contactar
                                                 </a>
                                                 {!a.cancelled && (
-                                                    <button onClick={() => setNotesModal({ apt: a, value: a.internalNote || '' })} title="Nota interna" className="text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                                                    <button type="button" onClick={() => setNotesModal({ apt: a, value: a.internalNote || '' })} title="Nota interna" className="text-amber-600 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
                                                         <IconNote />
                                                     </button>
                                                 )}
                                                 {a.cancelled ? (
-                                                    <button onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
+                                                    <button type="button" onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Eliminar permanentemente">
                                                         <IconTrash />
                                                     </button>
                                                 ) : (
-                                                    <button onClick={async () => { try { await db.collection("appointments").doc(a.id).update({ cancelled:true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy:'professional' }); setToast({type:'success', message:'Turno cancelado'}); } catch(err) { setToast({type:'error', message:'No se pudo cancelar.'}); } }} className="text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Cancelar turno">
+                                                    <button type="button" onClick={async () => { try { await db.collection("appointments").doc(a.id).update({ cancelled:true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy:'professional' }); setToast({type:'success', message:'Turno cancelado'}); } catch(err) { setToast({type:'error', message:'No se pudo cancelar.'}); } }} className="text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition" title="Cancelar turno">
                                                         ✕
                                                     </button>
                                                 )}
@@ -1573,7 +1834,6 @@
                             const cancelledByClient = cancelledTotal.filter(a => a.cancelledBy === 'client' || a.cancelledBy === 'client_reschedule').length;
                             const cancelledByProf = cancelledTotal.filter(a => a.cancelledBy === 'professional').length;
                             const totalApts = activeApts.length;
-                            // Asistencia — solo de turnos pasados NO cancelados con campo attended definido
                             const markedApts = pastApts.filter(a => !a.cancelled && a.attended !== undefined && a.attended !== null);
                             const attendedCount = markedApts.filter(a => a.attended === true).length;
                             const noShowCount   = markedApts.filter(a => a.attended === false).length;
@@ -1588,11 +1848,9 @@
                                     return d >= mon && d <= sun;
                                 }).length;
                             })();
-                            // Top clientes (solo activos)
                             const clientCount = {};
                             activeApts.forEach(a => { if (a.client) clientCount[a.client] = (clientCount[a.client]||0)+1; });
                             const topClients = Object.entries(clientCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-                            // Turnos por día de semana (solo activos)
                             const byDay = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
                             activeApts.forEach(a => { if (a.date) byDay[parseDateLocal(a.date).getDay()]++; });
                             const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -1619,7 +1877,6 @@
                                         </div>
                                     </div>
 
-                                    {/* Asistencia */}
                                     {markedApts.length > 0 && (
                                         <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-sm">
                                             <h3 className="font-bold text-neutral-800 mb-4">📋 Tasa de asistencia</h3>
@@ -1696,36 +1953,40 @@
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-neutral-100">
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre</label><input name="name" defaultValue={profile.name} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Negocio</label><input name="business" defaultValue={profile.business} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label><input name="service" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" /></div>
-                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix} value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required /></div>
                                     <div className="sm:col-span-2">
-                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Dirección <span className="normal-case font-normal text-neutral-400">(se muestra a los clientes con link a Maps)</span></label>
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Link personalizado</label>
+                                        <div className="flex items-center">
+                                            <span className="bg-neutral-100 border border-neutral-200 border-r-0 px-3 py-3.5 rounded-l-xl text-sm text-neutral-500 font-medium">misitio.com/?p=</span>
+                                            <input name="slug" maxLength="30" defaultValue={profile.slug || ''} placeholder="ej: mi-negocio" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-r-xl text-sm outline-none focus:border-brand-600" />
+                                        </div>
+                                        <p className="text-[10px] text-neutral-400 mt-1">Solo letras, números y guiones. Es más fácil de compartir en Instagram.</p>
+                                    </div>
+
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre</label><input name="name" maxLength="50" defaultValue={profile.name} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Negocio</label><input name="business" maxLength="50" defaultValue={profile.business} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label><input name="service" maxLength="50" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" /></div>
+                                    <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix} value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required /></div>
+                                    
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Precio del servicio <span className="normal-case font-normal text-neutral-400">(Opcional)</span></label>
+                                        <input name="price" maxLength="30" defaultValue={profile.price || ''} placeholder="Ej: $15.000 o Consultar" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
+                                    </div>
+
+                                    <div className="sm:col-span-2 mt-2">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Dirección <span className="normal-case font-normal text-neutral-400">(se muestra con link a Maps)</span></label>
                                         <div className="flex gap-2">
-                                            <input
-                                                name="address"
-                                                value={addressInput}
-                                                onChange={e => setAddressInput(e.target.value)}
-                                                placeholder="Ej: Av. Corrientes 1234, Buenos Aires"
-                                                className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowMapPicker(true)}
-                                                className="px-4 py-3 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-sm font-semibold hover:bg-brand-100 active:scale-95 transition whitespace-nowrap flex items-center gap-1.5"
-                                            >
-                                                🗺️ Mapa
-                                            </button>
+                                            <input name="address" maxLength="100" value={addressInput} onChange={e => setAddressInput(e.target.value)} placeholder="Ej: Av. Corrientes 1234" className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
+                                            <button type="button" onClick={() => setShowMapPicker(true)} className="px-4 py-3 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-sm font-semibold hover:bg-brand-100 active:scale-95 transition whitespace-nowrap flex items-center gap-1.5">🗺️ Mapa</button>
                                         </div>
                                     </div>
                                     <div className="sm:col-span-2 mt-2">
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Mensaje Automático de WhatsApp</label>
-                                        <textarea name="waTemplate" defaultValue={profile.waTemplate || DEFAULT_WA_TEMPLATE} rows="2" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" placeholder="Ej: Hola {cliente}, te confirmo tu turno para el {fecha} a las {hora} en {negocio}."></textarea>
+                                        <textarea name="waTemplate" maxLength="300" defaultValue={profile.waTemplate || DEFAULT_WA_TEMPLATE} rows="2" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" placeholder="Ej: Hola {cliente}, te confirmo tu turno para el {fecha} a las {hora} en {negocio}."></textarea>
                                         <p className="text-[10px] text-neutral-400 mt-1">{'Variables automáticas permitidas: {cliente}, {fecha}, {hora}, {negocio}'}</p>
                                     </div>
                                 </div>
-                                <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
+                                <div className="border-t border-neutral-100 pt-4 mt-2">
+                                    <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
                                     <div className="flex flex-wrap gap-2 mb-4">
                                         {DAYS.map(d => (<label key={d.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300"><input name={`day_${d.id}`} type="checkbox" defaultChecked={(profile.config?.workingDays||[1,2,3,4,5]).includes(d.id)} className="accent-brand-600" /><span className="text-sm font-medium">{d.name}</span></label>))}
                                     </div>
@@ -1737,6 +1998,15 @@
                                     <div className="mt-4">
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Límite de turnos por día (0 = sin límite)</label>
                                         <input name="maxPerDay" type="number" min="0" max="100" defaultValue={profile.config?.maxPerDay||0} className="w-32 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" />
+                                    </div>
+                                    <div className="mt-6">
+                                        <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
+                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer" />
+                                            <div>
+                                                <span className="block text-sm font-semibold text-neutral-800">Recibir notificaciones</span>
+                                                <span className="block text-xs text-neutral-500 mt-1">Te avisaremos con sonido y alerta en tu dispositivo cuando un cliente reserve o cancele un turno.</span>
+                                            </div>
+                                        </label>
                                     </div>
                                 </div>
                                 <button type="submit" disabled={saving} className={`px-8 py-4 rounded-2xl font-semibold shadow-lg text-white transition ${saving ? 'bg-brand-400 cursor-not-allowed' : 'bg-brand-600 active:scale-95'}`}>{saving ? 'Guardando...' : 'Guardar Cambios'}</button>
@@ -1766,8 +2036,10 @@
         const [loadingSlots, setLoadingSlots] = useState(false);
         const [holdSecondsLeft, setHoldSecondsLeft] = useState(null);
         const [selectingSlot, setSelectingSlot] = useState(false);
+        const [showWaitlistForm, setShowWaitlistForm] = useState(false);
+        const [waitlistPhonePrefix, setWaitlistPhonePrefix] = useState('54');
+        const [waitlistPhoneLocal, setWaitlistPhoneLocal] = useState('');
 
-        // ID de sesión único por pestaña/browser — identifica el hold de este usuario
         const sessionId = useRef(
             sessionStorage.getItem('_tfpSid') || (() => {
                 const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -1775,38 +2047,32 @@
             })()
         );
         const holdTimerRef      = useRef(null);
-        const currentHoldRef   = useRef(null); // slotId del hold activo
-        const remainingSecsRef = useRef(120);  // tiempo restante que se preserva al cambiar fecha
+        const currentHoldRef   = useRef(null); 
+        const remainingSecsRef = useRef(120);  
 
-        // Liberar hold de Firestore (silencioso)
         const releaseHold = async (slotId) => {
             try { await db.collection("holds").doc(slotId).delete(); } catch(e) {}
         };
 
-        // Limpiar hold activo + countdown sin tocar Firestore
         const clearHoldState = () => {
             clearInterval(holdTimerRef.current);
             holdTimerRef.current = null;
             setHoldSecondsLeft(null);
         };
 
-        // Liberar hold activo completamente (Firestore + estado)
-        // resetTimer=true cuando el usuario abandona voluntariamente (no al cambiar fecha)
         const abandonHold = async (resetTimer = false) => {
             clearHoldState();
             if (resetTimer) remainingSecsRef.current = 120;
             if (currentHoldRef.current) {
                 const slotToRelease = currentHoldRef.current;
-                currentHoldRef.current = null; // nulificar ANTES del await para evitar race condition
+                currentHoldRef.current = null; 
                 await releaseHold(slotToRelease);
             }
         };
 
-        // Guardar fecha activa en ref para accederla desde useEffects sin closures stale
         const selectedDateRef = useRef('');
         useEffect(() => { selectedDateRef.current = selectedDate; }, [selectedDate]);
 
-        // Mantener remainingSecsRef sincronizado para que los cambios de fecha preserven el tiempo
         useEffect(() => {
             if (holdSecondsLeft !== null && holdSecondsLeft > 0) remainingSecsRef.current = holdSecondsLeft;
         }, [holdSecondsLeft]);
@@ -1814,7 +2080,6 @@
         const expiryMountedRef = useRef(true);
         useEffect(() => { expiryMountedRef.current = true; return () => { expiryMountedRef.current = false; }; }, []);
 
-        // Reaccionar cuando el countdown llega a 0 — evita setState anidados
         useEffect(() => {
             if (holdSecondsLeft !== 0) return;
             clearInterval(holdTimerRef.current);
@@ -1824,17 +2089,15 @@
             setHoldSecondsLeft(null);
             setSelectedTime('');
             if (expiredSlot) releaseHold(expiredSlot);
-            // Recargar slots de la fecha actual para liberar el slot visualmente
             const dateToReload = selectedDateRef.current;
             if (dateToReload) {
                 setSelectedDate('');
                 setTimeout(() => { if (expiryMountedRef.current) setSelectedDate(dateToReload); }, 0);
             }
-            remainingSecsRef.current = 120; // resetear para el próximo uso
+            remainingSecsRef.current = 120; 
             setToast({ type:'error', message:'⏱ Tiempo agotado. El horario volvió a estar disponible.' });
         }, [holdSecondsLeft]);
 
-        // Cleanup al desmontar el componente
         useEffect(() => {
             return () => {
                 clearInterval(holdTimerRef.current);
@@ -1865,10 +2128,10 @@
         useEffect(() => {
             if (selectedDate && profId) {
                 let active = true;
-                // Al cambiar fecha, liberar cualquier hold previo
                 abandonHold();
                 setSelectedTime('');
                 setBookedTimes([]);
+                setShowWaitlistForm(false);
                 setLoadingSlots(true);
                 const nowMs = Date.now();
                 Promise.all([
@@ -1877,7 +2140,6 @@
                 ]).then(([aptsSnap, holdsSnap]) => {
                     if (!active) return;
                     const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
-                    // Holds activos de OTROS usuarios (el nuestro no cuenta para bloquearnos)
                     const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
                         const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
                         return exp > nowMs && d.sessionId !== sessionId.current;
@@ -1893,28 +2155,23 @@
             }
         }, [selectedDate, profId]);
 
-        // Seleccionar horario: crea un hold de 2 minutos en Firestore
         const selectTime = async (time) => {
             if (selectingSlot) return;
-            // Si toca el mismo slot, lo deselecciona — resetear timer para próxima selección
             if (time === selectedTime) {
                 await abandonHold(true);
                 setSelectedTime('');
                 return;
             }
             setSelectingSlot(true);
-            // Liberar hold anterior si existía
             if (currentHoldRef.current) {
                 await releaseHold(currentHoldRef.current);
                 currentHoldRef.current = null;
                 clearHoldState();
             }
             const slotId = `${profId}_${selectedDate}_${time.replace(':','-')}`;
-            // Usar el tiempo restante del hold anterior para no reiniciar desde 2:00 al cambiar de fecha
             const secsToUse = Math.max(remainingSecsRef.current || 120, 30);
             const expiresAt = firebase.firestore.Timestamp.fromMillis(Date.now() + secsToUse * 1000);
             try {
-                // Asegurarse de tener uid (anónimo) para poder escribir en Firestore
                 if (!auth.currentUser) await auth.signInAnonymously().catch(() => {});
                 await db.runTransaction(async (tx) => {
                     const holdRef  = db.collection("holds").doc(slotId);
@@ -1926,7 +2183,10 @@
                         const exp = h.expiresAt?.toDate ? h.expiresAt.toDate().getTime() : new Date(h.expiresAt).getTime();
                         if (exp > Date.now() && h.sessionId !== sessionId.current) throw new Error("Otro usuario está reservando este turno. Intentá en unos instantes.");
                     }
-                    tx.set(holdRef, { profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt });
+                    tx.set(holdRef, { 
+                        profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt,
+                        serverCreatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
                 });
                 currentHoldRef.current = slotId;
                 setSelectedTime(time);
@@ -1935,21 +2195,40 @@
                 holdTimerRef.current = setInterval(() => {
                     setHoldSecondsLeft(prev => {
                         if (prev === null) return null;
-                        if (prev <= 1) return 0; // señal de expiración — el useEffect lo procesa
+                        if (prev <= 1) return 0; 
                         return prev - 1;
                     });
                 }, 1000);
             } catch(err) {
-                // Si ya habíamos liberado el hold anterior, limpiar el tiempo seleccionado
-                // para no dejar el slot visualmente seleccionado sin hold real
                 setSelectedTime('');
                 setToast({ type:'error', message: err.message || 'No se pudo reservar el horario.' });
-            } finally { setSelectingSlot(false); }
+            } finally { 
+                if (expiryMountedRef.current) setSelectingSlot(false); 
+            }
+        };
+
+        const handleWaitlist = async (e) => {
+            e.preventDefault();
+            const wLocal = waitlistPhoneLocal.replace(/\D/g,'');
+            if (wLocal.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
+            setBooking(true);
+            try {
+                await db.collection("waitlists").add({
+                    profId,
+                    date: selectedDate,
+                    client: e.target.waitlistClient.value.trim(),
+                    phone: buildPhone(waitlistPhonePrefix, wLocal),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setToast({type:'success', message:'¡Anotado! Te avisaremos si se libera un turno.'});
+                setShowWaitlistForm(false);
+            } catch(err) {
+                setToast({type:'error', message:'No se pudo anotar en la lista.'});
+            } finally { setBooking(false); }
         };
 
         const handleBooking = async (e) => {
             e.preventDefault(); if (!selectedTime) return;
-            // Verificar que el horario no haya pasado mientras el usuario llenaba el form
             if (selectedDate === getTodayStr()) {
                 const nowMins = new Date().getHours()*60 + new Date().getMinutes();
                 const [sh, sm] = selectedTime.split(':').map(Number);
@@ -1982,11 +2261,11 @@
                     const slotDoc = await tx.get(slotRef);
                     if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado por otra persona.");
                     tx.set(slotRef, aptData);
-                    tx.delete(holdRef); // Liberar hold al confirmar
+                    tx.delete(holdRef); 
                 });
                 clearHoldState();
                 currentHoldRef.current = null;
-                remainingSecsRef.current = 120; // resetear para futuros usos
+                remainingSecsRef.current = 120; 
                 setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value.trim() });
             } catch (err) { 
                 console.error(err); 
@@ -2006,25 +2285,26 @@
         );
 
         if (sent) {
-            // Generar link .ics para agregar al calendario
-            const makeICS = () => {
+            const openGoogleCalendar = () => {
                 const [y,m,d] = sent.date.split('-').map(Number);
                 const [h,min] = sent.time.split(':').map(Number);
+                
                 const pad = n => String(n).padStart(2,'0');
-                const dtStart = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+                const startStr = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+                
                 const dur = prof?.config?.duration || 30;
-                const endD = new Date(y,m-1,d,h,min+dur);
-                const dtEnd = `${endD.getFullYear()}${pad(endD.getMonth()+1)}${pad(endD.getDate())}T${pad(endD.getHours())}${pad(endD.getMinutes())}00`;
-                const now2 = new Date();
-                const stamp = `${now2.getUTCFullYear()}${pad(now2.getUTCMonth()+1)}${pad(now2.getUTCDate())}T${pad(now2.getUTCHours())}${pad(now2.getUTCMinutes())}${pad(now2.getUTCSeconds())}Z`;
-                const uid = `turno-${profId}-${sent.date}-${sent.time.replace(':','')}@turnofacilpro`;
-                const escICS = s => s.replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;');
-                const ics = [`BEGIN:VCALENDAR`,`VERSION:2.0`,`CALSCALE:GREGORIAN`,`PRODID:-//Turno Fácil Pro//ES`,`BEGIN:VEVENT`,`UID:${uid}`,`DTSTAMP:${stamp}`,`DTSTART:${dtStart}`,`DTEND:${dtEnd}`,`SUMMARY:${escICS('Turno en ' + (prof?.business || ''))}`,`DESCRIPTION:${escICS('Turno reservado en ' + (prof?.business || ''))}`,`END:VEVENT`,`END:VCALENDAR`].join('\r\n');
-                const blob = new Blob([ics], {type:'text/calendar'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'turno.ics'; a.click();
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                const dObj = new Date(y, m-1, d, h, min);
+                dObj.setMinutes(dObj.getMinutes() + dur);
+                const endStr = `${dObj.getFullYear()}${pad(dObj.getMonth()+1)}${pad(dObj.getDate())}T${pad(dObj.getHours())}${pad(dObj.getMinutes())}00`;
+
+                const title = encodeURIComponent(`Turno en ${prof?.business || ''}`);
+                const details = encodeURIComponent(`Turno reservado online.`);
+                const loc = encodeURIComponent(prof?.address || '');
+                
+                const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${loc}`;
+                window.open(url, '_blank');
             };
+
             return (
                 <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
                     <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
@@ -2039,14 +2319,14 @@
                             )}
                         </div>
                         {prof?.address && (
-                            <button onClick={() => openMaps(prof.address)} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
+                            <button type="button" onClick={() => openMaps(prof.address)} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
                                 🗺️ Cómo llegar
                             </button>
                         )}
-                        <button onClick={makeICS} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
-                            📅 Agregar a mi calendario
+                        <button type="button" onClick={openGoogleCalendar} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
+                            📅 Agregar a Google Calendar
                         </button>
-                        <button onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-2 w-full custom-text border custom-border py-2.5 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
+                        <button type="button" onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-2 w-full custom-text border custom-border py-2.5 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
                     </div>
                 </div>
             );
@@ -2076,19 +2356,29 @@
                                      : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{(prof.business || '?').charAt(0).toUpperCase()}</div>}
                     <h1 className="text-2xl font-bold text-neutral-950 tracking-tighter">{prof.business}</h1>
                     <p className="custom-text font-medium">{prof.service || 'Reserva tu cita online'}</p>
+                    
+                    {prof.price && (
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 bg-white text-neutral-800 rounded-full font-bold text-sm shadow-sm border border-neutral-100">
+                            💳 {prof.price}
+                        </div>
+                    )}
+                    
                     {prof.address && (
-                        <button
-                            onClick={() => openMaps(prof.address)}
-                            className="mt-3 inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 px-3 py-1.5 rounded-xl transition active:scale-95"
-                        >
-                            📍 {prof.address}
-                        </button>
+                        <div className="mt-3">
+                            <button
+                                type="button"
+                                onClick={() => openMaps(prof.address)}
+                                className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-white hover:bg-neutral-100 shadow-sm border border-neutral-100 px-3 py-1.5 rounded-xl transition active:scale-95"
+                            >
+                                📍 {prof.address}
+                            </button>
+                        </div>
                     )}
                 </div>
 
                 <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-2xl border border-neutral-100 shadow-sm">
-                    <button onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
-                    <button onClick={() => { abandonHold(true); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
+                    <button type="button" onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
+                    <button type="button" onClick={() => { abandonHold(true); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
                 </div>
 
                 {clientView === 'book' ? (
@@ -2102,7 +2392,25 @@
                                     <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...
                                 </div>
                             ) : availableSlots.length === 0 ? (
-                                <div className="text-center py-5 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">&#128549; No quedan turnos disponibles para este día.</div>
+                                <div className="text-center p-5 bg-neutral-50 rounded-2xl border border-neutral-200 fade-in">
+                                    <p className="text-sm text-neutral-600 font-medium mb-3">😔 No quedan turnos disponibles para este día.</p>
+                                    
+                                    {!showWaitlistForm ? (
+                                        <button type="button" onClick={() => setShowWaitlistForm(true)} className="custom-text border custom-border px-4 py-2 rounded-xl text-sm font-bold active:scale-95 transition">
+                                            🔔 Anotarme en Lista de Espera
+                                        </button>
+                                    ) : (
+                                        <div className="bg-white p-4 rounded-xl shadow-sm text-left border border-neutral-100 mt-2 fade-in">
+                                            <p className="text-xs text-neutral-500 font-semibold mb-3">Te avisaremos si alguien cancela y se libera un turno.</p>
+                                            <input id="waitlistClient" name="waitlistClient" maxLength="50" placeholder="Nombre y apellido" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl outline-none text-sm mb-3" required form="waitlistForm" />
+                                            <PhoneInput namePrefix="waitlistPhonePrefix" nameLocal="waitlistPhoneLocal" prefix={waitlistPhonePrefix} onPrefixChange={setWaitlistPhonePrefix} value={waitlistPhoneLocal} onChange={e => setWaitlistPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp" required form="waitlistForm" />
+                                            <div className="flex gap-2 mt-4">
+                                                <button type="button" onClick={() => setShowWaitlistForm(false)} className="flex-1 py-2 text-neutral-500 font-medium text-sm">Cancelar</button>
+                                                <button type="button" onClick={handleWaitlist} disabled={booking} className="flex-1 custom-bg text-white py-2 rounded-xl font-bold text-sm" form="waitlistForm">Anotarme</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 fade-in">
                                     {availableSlots.map(time => (
@@ -2125,12 +2433,12 @@
                                 </div>
                             </div>
                         )}
-                        <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <input name="clientName" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
-                            <input name="dni" placeholder="DNI (sin puntos)" inputMode="numeric" pattern="[0-9]*" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
+                        <div className={`border-t border-neutral-100 pt-6 space-y-4 transition-all ${!selectedTime ? 'opacity-50 pointer-events-none hidden' : 'block'}`}>
+                            <input name="clientName" maxLength="50" placeholder="Nombre y apellido" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none mb-4" required />
+                            <input name="dni" maxLength="15" placeholder="DNI (sin puntos)" inputMode="numeric" pattern="[0-9]*" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
                             <PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Sin 0 ni 15" required />
-                            <input name="notes" placeholder="Alguna nota o comentario (opcional)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" />
-                            <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
+                            <input name="notes" maxLength="200" placeholder="Alguna nota o comentario (opcional)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" />
+                            <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg text-white ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
                                 {booking ? 'Reservando...' : 'Confirmar Reserva'}
                             </button>
                         </div>
@@ -2145,44 +2453,49 @@
     // ===================== CANCEL VIEW =====================
     function CancelView({ profId, setDialog, setToast, onReschedule }) {
         const [searchDni, setSearchDni] = useState('');
+        const [searchPhonePrefix, setSearchPhonePrefix] = useState('54');
+        const [searchPhoneLocal, setSearchPhoneLocal] = useState('');
         const [myApts, setMyApts]       = useState(null);
         const [searching, setSearching] = useState(false);
         const mountedRef = useRef(true);
 
         useEffect(() => {
-            mountedRef.current = true;
-            return () => { mountedRef.current = false; };
+            mountedRef.current = true; return () => { mountedRef.current = false; };
         }, []);
 
         const searchApts = async () => {
             if (searching) return;
             const dniClean = searchDni.replace(/\D/g,'');
+            const phoneClean = searchPhoneLocal.replace(/\D/g,'');
             if (dniClean.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
+            if (phoneClean.length < 8) { setToast({ type:'error', message:'Ingresá el WhatsApp que usaste para reservar.' }); return; }
+            
+            const fullSearchPhone = buildPhone(searchPhonePrefix, searchPhoneLocal);
             setSearching(true);
             try {
                 const today = getTodayStr();
-                // Filtra por profId + dni: el cliente ve solo sus turnos en ESTE profesional
                 const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get();
                 if (!mountedRef.current) return;
-                const now   = new Date();
-                const nowMins = now.getHours() * 60 + now.getMinutes();
+                
+                const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
                 const isFuture = (a) => {
                     if (a.date > today) return true;
                     if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) >= nowMins; }
                     return false;
                 };
-                const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .sort((a,b) => {
-                        // Primero activos, luego cancelados; dentro de cada grupo por fecha
-                        if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
-                        return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
-                    });
-                // Mostrar futuros activos + los cancelados recientes (últimos 30 días)
+                
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
+                    if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
+                    return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
+                });
+                
                 const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 const thirtyStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth()+1).padStart(2,'0')}-${String(thirtyDaysAgo.getDate()).padStart(2,'0')}`;
+                
                 const filtered = list.filter(a => {
-                    if (a.cancelled) return a.date >= thirtyStr; // cancelados recientes
-                    return isFuture(a); // activos futuros
+                    if (a.phone !== fullSearchPhone) return false; // Verificación estricta de teléfono
+                    if (a.cancelled) return a.date >= thirtyStr; 
+                    return isFuture(a); 
                 });
                 setMyApts(filtered);
             } catch (err) { if (mountedRef.current) setToast({ type:'error', message:'Error al buscar turnos.' }); } finally { if (mountedRef.current) setSearching(false); }
@@ -2190,15 +2503,10 @@
 
         const cancelApt = (apt) => {
             setDialog({
-                type:'confirm', title:'Cancelar Turno', message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs? Quedará registrado como cancelado.`,
+                type:'confirm', title:'Cancelar Turno', message:`¿Querés cancelar el turno del ${formatDate(apt.date)} a las ${apt.time}hs?`,
                 onConfirm: async () => {
                     try {
-                        // Marcar como cancelado en lugar de borrar — queda en historial
-                        await db.collection("appointments").doc(apt.id).update({
-                            cancelled: true,
-                            cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            cancelledBy: 'client'
-                        });
+                        await db.collection("appointments").doc(apt.id).update({ cancelled: true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy: 'client' });
                         setMyApts(prev => prev.map(a => a.id === apt.id ? {...a, cancelled:true, cancelledBy:'client'} : a));
                         setToast({type:'success', message:'Turno cancelado'});
                     } catch (err) { setToast({ type:'error', message:'No se pudo cancelar.' }); }
@@ -2211,38 +2519,35 @@
                 type:'confirm', title:'Reprogramar Turno', message:`Cancelamos el turno del ${formatDate(apt.date)} a las ${apt.time}hs para elegir uno nuevo. ¿Continuás?`,
                 onConfirm: async () => {
                     try {
-                        await db.collection("appointments").doc(apt.id).update({
-                            cancelled: true,
-                            cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            cancelledBy: 'client_reschedule'
-                        });
+                        await db.collection("appointments").doc(apt.id).update({ cancelled: true, cancelledAt: firebase.firestore.FieldValue.serverTimestamp(), cancelledBy: 'client_reschedule' });
                         setMyApts(prev => prev.map(a => a.id === apt.id ? {...a, cancelled:true, cancelledBy:'client_reschedule'} : a));
-                        setToast({ type:'success', message:'Turno cancelado. Elegí una nueva fecha.' });
+                        setToast({ type:'success', message:'Turno cancelado. Elegí nueva fecha.' });
                         if (onReschedule) onReschedule();
-                    } catch (err) { setToast({ type:'error', message:'No se pudo reprogramar. Intentá de nuevo.' }); }
+                    } catch (err) { setToast({ type:'error', message:'No se pudo reprogramar.' }); }
                 }
             });
         };
 
         return (
             <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-xl shadow-brand-100/50 space-y-6 border border-neutral-100 fade-in">
-                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá tu DNI para ver tus turnos en este negocio.</p></div>
-                <div className="space-y-2">
+                <div><h3 className="text-lg font-bold mb-1">Mis turnos</h3><p className="text-sm text-neutral-500">Ingresá tus datos para ver o cancelar tus turnos.</p></div>
+                <div className="space-y-3">
                     <input
-                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        type="text" inputMode="numeric" pattern="[0-9]*" maxLength="15"
                         value={searchDni} onChange={e => setSearchDni(e.target.value.replace(/\D/g,''))}
-                        onKeyDown={e => e.key === 'Enter' && searchApts()}
-                        placeholder="Ej: 35123456"
+                        placeholder="Tu DNI (sin puntos)"
                         className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600"
                     />
-                    <button onClick={searchApts} disabled={searching} className="w-full custom-bg py-3 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm">
+                    <PhoneInput namePrefix="searchPhonePrefix" nameLocal="searchPhoneLocal" prefix={searchPhonePrefix} onPrefixChange={setSearchPhonePrefix} value={searchPhoneLocal} onChange={e => setSearchPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp (sin 0 ni 15)" required />
+                    
+                    <button type="button" onClick={searchApts} disabled={searching} className="w-full custom-bg py-3.5 mt-2 rounded-2xl font-semibold active:scale-95 transition flex items-center justify-center gap-2 text-sm text-white">
                         {searching ? 'Buscando...' : <><IconSearch /> Buscar mis turnos</>}
                     </button>
                 </div>
                 {myApts !== null && (
                     <div className="fade-in">
                         {myApts.length === 0 ? (
-                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos para este DNI.</div>
+                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos para este DNI y celular.</div>
                         ) : (
                             <div className="space-y-3">
                                 {myApts.map(apt => (
@@ -2256,8 +2561,8 @@
                                         </div>
                                         {!apt.cancelled && !apt.addedManually && (
                                             <div className="flex gap-2 pt-1 border-t border-neutral-200">
-                                                <button onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
-                                                <button onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
+                                                <button type="button" onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
+                                                <button type="button" onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
                                             </div>
                                         )}
                                         {!apt.cancelled && apt.addedManually && (
@@ -2279,4 +2584,4 @@
     root.render(<ErrorBoundary><App /></ErrorBoundary>);
 </script>
 </body>
-</html>
+</html>            
