@@ -1752,15 +1752,19 @@
                             const notifsEnabled = profileConfigRef.current?.notificationsEnabled !== false; 
                             const prevMap = prevAptsRef.current;
                             
-                            all.forEach(apt => {
+                                                        all.forEach(apt => {
                                 const prev = prevMap.get(apt.id);
                                 if (notifsEnabled) {
                                     if (!prev && !apt.cancelled && !apt.addedManually) {
-                                        showNotification('¡Nuevo turno reservado!', `${apt.client} agendó para el ${formatDate(apt.date)} a las ${apt.time}hs.`);
+                                        const msg = `${apt.client} agendó para el ${formatDate(apt.date)} a las ${apt.time}hs.`;
+                                        showNotification('¡Nuevo turno reservado!', msg); // Notificación del sistema operativo
+                                        setToast({ type: 'success', message: `¡NUEVO TURNO! ${msg}` }); // Cartel flotante dentro de la app
                                         playSound = true;
                                     }
                                     else if (prev && !prev.cancelled && apt.cancelled && (apt.cancelledBy === 'client' || apt.cancelledBy === 'client_reschedule')) {
-                                        showNotification('Turno cancelado', `${apt.client} canceló su turno del ${formatDate(apt.date)} a las ${apt.time}hs.`);
+                                        const msg = `${apt.client} canceló su turno del ${formatDate(apt.date)} a las ${apt.time}hs.`;
+                                        showNotification('Turno cancelado', msg); // Notificación del sistema operativo
+                                        setToast({ type: 'error', message: `¡TURNO CANCELADO! ${msg}` }); // Cartel flotante dentro de la app (en rojo)
                                         playSound = true;
                                     }
                                 }
@@ -2799,19 +2803,29 @@
                 window.open(url, '_blank');
             };
 
+            // NUEVO: Generar mensaje y link de WhatsApp para el profesional
+            const waMessage = encodeURIComponent(`¡Hola! Acabo de reservar un turno.\n\n👤 Nombre: ${sent.client}\n📅 Fecha: ${formatDate(sent.date)}\n⏰ Hora: ${sent.time} hs\n\n¡Gracias!`);
+            const waLink = `https://wa.me/${prof?.phone}?text=${waMessage}`;
+
             return (
                 <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
                     <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
                         <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">✓</div>
                         <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
                         <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business}</p>
-                        <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-4">
+                        <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-6">
                             <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
                             <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
                             {prof?.address && (
                                 <p className="text-neutral-500 text-xs mt-2">📍 {prof.address}</p>
                             )}
                         </div>
+                        
+                        {/* NUEVO: Botón de WhatsApp destacado */}
+                        <a href={waLink} target="_blank" rel="noopener noreferrer" className="w-full bg-[#25D366] text-white py-3.5 rounded-2xl text-sm font-bold mb-3 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-[#20bd5a] shadow-md">
+                            <IconWhatsapp /> Avisar al profesional
+                        </a>
+
                         {prof?.address && (
                             <button type="button" onClick={() => openMaps(prof.address, prof.addressLat, prof.addressLng)} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
                                 🗺️ Cómo llegar
