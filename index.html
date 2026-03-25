@@ -570,10 +570,12 @@
             </div>
         );
     }
-    // ===================== SUPER ADMIN VIEW =====================
+    
+// ===================== SUPER ADMIN VIEW =====================
     function SuperAdminView({ user, setDialog, setToast }) {
         const [profs, setProfs] = useState([]);
         const [search, setSearch] = useState('');
+        const [filter, setFilter] = useState('all'); // 'all', 'trial', 'active', 'expiring', 'expired', 'suspended'
         const [tab, setTab] = useState('licenses'); 
         const [settings, setSettings] = useState({ mpPrice: '5000', paypalPrice: '15' });
         const [mpPriceInput, setMpPriceInput] = useState('');
@@ -625,7 +627,7 @@
         const renewLicense = async (prof) => {
             setDialog({
                 type: 'confirm', title: 'Renovar Licencia',
-                message: `¿Agregar 30 días a ${prof.business}? Se sumarán a los días que ya tiene.`,
+                message: `¿Agregar 30 días a ${prof.business}? Pasará a ser un cliente de PAGO.`,
                 onConfirm: async () => {
                     try {
                         const now = new Date();
@@ -635,7 +637,7 @@
                         baseDate.setDate(baseDate.getDate() + 30);
                         await db.collection("professionals").doc(prof.id).update({ 
                             licenseExpiresAt: baseDate.toISOString(), 
-                            subscriptionStatus: 'paid', 
+                            subscriptionStatus: 'paid', // ¡Acá se marca que ya pagó!
                             isSuspended: false 
                         });
                         setToast({ type:'success', message: 'Licencia renovada (+30 días).' });
@@ -677,7 +679,7 @@
                             docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref));
                             await batch.commit();
                         }
-                        setToast({ type:'success', message: 'Datos borrados. Eliminá el usuario de Firebase Auth manualmente.' });
+                        setToast({ type:'success', message: 'Datos borrados. Eliminá el usuario de Auth manualmente.' });
                     } catch(err) {
                         console.error(err);
                         setToast({ type:'error', message: 'Error al borrar. Intentá de nuevo.' });
@@ -686,9 +688,59 @@
             });
         };
 
-        if (loading) return <Spinner />;
+        const getSmartWaLink = (p) => {
+            const daysLeft = getDaysLeft(p.licenseExpiresAt);
+            let text = '';
+            const nombre = p.name ? p.name.split(' ')[0] : 'colega';
+            
+            if (p.isSuspended) {
+                text = `Hola ${nombre}, te escribo porque tu cuenta en Turno Fácil Pro ha sido suspendida. ¿Necesitás ayuda para regularizar el pago y reactivar tu panel?`;
+            } else if (daysLeft <= 0) {
+                text = `Hola ${nombre}, vimos que tu licencia en Turno Fácil Pro expiró. ¿Necesitás ayuda para renovarla y volver a recibir turnos?`;
+            } else if (daysLeft <= 3) {
+                text = `Hola ${nombre}, te aviso que tu licencia de Turno Fácil Pro vence en ${daysLeft} día${daysLeft===1?'':'s'}. Te escribo para que puedas renovarla anticipadamente y el sistema no se te corte.`;
+            } else if (p.subscriptionStatus === 'trial') {
+                text = `Hola ${nombre}! Te escribo de Turno Fácil Pro para darte la bienvenida. ¿Cómo venís con la plataforma en tus días de prueba?`;
+            } else {
+                text = `Hola ${nombre}, te escribo desde Turno Fácil Pro. ¿Cómo venís con la plataforma?`;
+            }
+            return `https://wa.me/${p.phone}?text=${encodeURIComponent(text)}`;
+        };
 
-        const filteredProfs = profs.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.email?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search) || p.business?.toLowerCase().includes(search.toLowerCase()));
+        // --- MÉTRICAS CORREGIDAS ---
+        const totalProfs = profs.length;
+        
+        // Usuarios en período de prueba gratuito (30 días iniciales)
+        const trialProfsCount = profs.filter(p => !p.isSuspended && p.subscriptionStatus === 'trial' && getDaysLeft(p.licenseExpiresAt) > 0).length;
+        
+        // Clientes que YA PAGARON y están activos (más de 3 días restantes)
+        const activePaidCount = profs.filter(p => !p.isSuspended && p.subscriptionStatus === 'paid' && getDaysLeft(p.licenseExpiresAt) > 3).length;
+        
+        // Clientes que YA PAGARON pero están por vencerse (3 días o menos)
+        const expiringPaidCount = profs.filter(p => !p.isSuspended && p.subscriptionStatus === 'paid' && getDaysLeft(p.licenseExpiresAt) > 0 && getDaysLeft(p.licenseExpiresAt) <= 3).length;
+        
+        const totalPaying = activePaidCount + expiringPaidCount; // Total real de clientes de pago
+        const expiredProfsCount = profs.filter(p => !p.isSuspended && getDaysLeft(p.licenseExpiresAt) <= 0).length;
+        const suspendedProfsCount = profs.filter(p => p.isSuspended).length;
+        
+        // El ingreso estimado AHORA SÍ solo multiplica a los que están en status "paid"
+        const estimatedIncome = totalPaying * (Number(settings.mpPrice) || 5000);
+
+        const filteredProfs = profs.filter(p => {
+            const q = search.toLowerCase();
+            const matchesSearch = p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.phone?.includes(search) || p.business?.toLowerCase().includes(q);
+            if (!matchesSearch) return false;
+
+            const daysLeft = getDaysLeft(p.licenseExpiresAt);
+            if (filter === 'trial') return !p.isSuspended && p.subscriptionStatus === 'trial' && daysLeft > 0;
+            if (filter === 'active') return !p.isSuspended && p.subscriptionStatus === 'paid' && daysLeft > 3;
+            if (filter === 'expiring') return !p.isSuspended && p.subscriptionStatus === 'paid' && daysLeft > 0 && daysLeft <= 3;
+            if (filter === 'expired') return !p.isSuspended && daysLeft <= 0;
+            if (filter === 'suspended') return p.isSuspended;
+            return true;
+        });
+
+        if (loading) return <Spinner />;
 
         return (
             <div className="max-w-6xl mx-auto p-4 md:p-8 fade-in pb-20">
@@ -742,60 +794,123 @@
 
                 {tab === 'licenses' && (
                     <div className="fade-in space-y-4">
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400"><IconSearch /></div>
-                            <input type="text" placeholder="Buscar Usuario por WhatsApp, nombre o email..." value={search} onChange={e => setSearch(e.target.value)}
-                                className="w-full pl-12 pr-4 py-4 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-neutral-900 shadow-sm font-medium" />
+                        
+                        {/* MÉTRICAS GLOBALES DEL NEGOCIO */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div className="bg-white p-5 rounded-3xl border border-neutral-200 shadow-sm text-center">
+                                <div className="text-3xl font-bold text-neutral-800">{totalProfs}</div>
+                                <div className="text-xs text-neutral-500 mt-1 font-medium">Cuentas creadas</div>
+                            </div>
+                            <div className="bg-white p-5 rounded-3xl border border-blue-200 shadow-sm text-center">
+                                <div className="text-3xl font-bold text-blue-600">{trialProfsCount}</div>
+                                <div className="text-xs text-blue-700 mt-1 font-medium">En prueba gratuita</div>
+                            </div>
+                            <div className="bg-white p-5 rounded-3xl border border-emerald-200 shadow-sm text-center">
+                                <div className="text-3xl font-bold text-emerald-600">{totalPaying}</div>
+                                <div className="text-xs text-emerald-700 mt-1 font-medium">Clientes de pago</div>
+                            </div>
+                            <div className="bg-white p-5 rounded-3xl border border-brand-200 shadow-sm text-center">
+                                <div className="text-3xl font-bold text-brand-600">${estimatedIncome.toLocaleString('es-AR')}</div>
+                                <div className="text-xs text-brand-700 mt-1 font-medium">Ingreso aprox. / mes</div>
+                            </div>
+                        </div>
+
+                        {/* BUSCADOR Y FILTROS RÁPIDOS */}
+                        <div className="bg-white p-4 rounded-3xl border border-neutral-200 shadow-sm mb-6">
+                            <div className="relative mb-4">
+                                <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400"><IconSearch /></div>
+                                <input type="text" placeholder="Buscar por WhatsApp, nombre o email..." value={search} onChange={e => setSearch(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none focus:border-neutral-900 font-medium text-sm" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='all' ? 'bg-neutral-900 text-white' : 'bg-neutral-50 border border-neutral-200 text-neutral-600 hover:bg-neutral-100'}`}>Todos ({totalProfs})</button>
+                                <button onClick={() => setFilter('trial')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='trial' ? 'bg-blue-600 text-white' : 'bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100'}`}>En Prueba ({trialProfsCount})</button>
+                                <button onClick={() => setFilter('active')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='active' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100'}`}>Activos de Pago ({activePaidCount})</button>
+                                <button onClick={() => setFilter('expiring')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='expiring' ? 'bg-orange-500 text-white' : 'bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100'}`}>Vencen pronto ({expiringPaidCount})</button>
+                                <button onClick={() => setFilter('expired')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='expired' ? 'bg-red-500 text-white' : 'bg-red-50 border border-red-200 text-red-700 hover:bg-red-100'}`}>Vencidos ({expiredProfsCount})</button>
+                                <button onClick={() => setFilter('suspended')} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${filter==='suspended' ? 'bg-neutral-600 text-white' : 'bg-neutral-100 border border-neutral-300 text-neutral-700 hover:bg-neutral-200'}`}>Suspendidos ({suspendedProfsCount})</button>
+                            </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredProfs.map(p => {
-                                const daysLeft = getDaysLeft(p.licenseExpiresAt);
-                                const isExpired = daysLeft <= 0;
-                                const daysText = daysLeft === 1 ? '1 día restante' : `${daysLeft} días restantes`;
-                                
-                                return (
-                                <div key={p.id} className={`bg-white p-5 rounded-3xl border ${p.isSuspended ? 'border-red-300' : isExpired ? 'border-orange-200' : 'border-neutral-200'} shadow-sm relative overflow-hidden`}>
-                                    <div className="mb-1">
-                                        <h3 className="text-lg font-bold text-neutral-900">{p.business}</h3>
-                                        <p className="text-sm text-neutral-500">{p.name} · {p.email}</p>
-                                        <a href={`https://wa.me/${p.phone}`} target="_blank" className="text-sm font-bold text-emerald-600 mt-1 block hover:underline">{p.phone}</a>
-                                        {(() => {
-                                            let altaDate = null;
-                                            if (p.createdAt) {
-                                                altaDate = p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt);
-                                            } else if (p.licenseExpiresAt) {
-                                                const exp = p.licenseExpiresAt?.toDate ? p.licenseExpiresAt.toDate() : new Date(p.licenseExpiresAt);
-                                                altaDate = new Date(exp);
-                                                altaDate.setDate(altaDate.getDate() - 30);
-                                            }
-                                            if (!altaDate || isNaN(altaDate.getTime())) return null;
-                                            const label = p.createdAt ? 'Alta' : 'Alta aprox.';
-                                            return <p className="text-xs text-neutral-400 mt-1">📅 {label}: {altaDate.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}</p>;
-                                        })()}
-                                    </div>
-                                    <div className="mt-3">
-                                        {p.isSuspended ? <span className="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-lg text-xs font-bold">Suspendido</span> :
-                                         isExpired ? <span className="inline-block bg-orange-100 text-orange-800 px-3 py-1 rounded-lg text-xs font-bold">Vencido</span> :
-                                         p.subscriptionStatus === 'trial' ? <span className="inline-block bg-amber-100 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold">Prueba ({daysText})</span> :
-                                         <span className="inline-block bg-emerald-100 text-emerald-800 px-3 py-1 rounded-lg text-xs font-bold">Pagado ({daysText})</span>}
-                                    </div>
+                        {/* LISTADO DE PROFESIONALES */}
+                        {filteredProfs.length === 0 ? (
+                            <div className="text-center py-10 text-neutral-500 font-medium">No se encontraron profesionales con estos filtros.</div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {filteredProfs.map(p => {
+                                    const daysLeft = getDaysLeft(p.licenseExpiresAt);
+                                    const isExpired = daysLeft <= 0;
+                                    const isTrial = p.subscriptionStatus === 'trial';
+                                    const daysText = daysLeft === 1 ? '1 día restante' : `${daysLeft} días restantes`;
                                     
-                                    <button type="button" onClick={() => renewLicense(p)} className="w-full bg-neutral-900 text-white py-2.5 rounded-xl text-sm font-bold mt-4 mb-2 hover:bg-neutral-800 active:scale-95 transition">Renovar (+30 días)</button>
-                                    
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button type="button" onClick={() => toggleSuspend(p)} className="bg-orange-100 text-orange-700 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-200 active:scale-95 transition">{p.isSuspended ? 'Reactivar' : 'Suspender'}</button>
-                                        <button type="button" onClick={() => deleteProf(p)} className="bg-red-100 text-red-700 py-2.5 rounded-xl text-sm font-bold hover:bg-red-200 active:scale-95 transition">Borrar Físico</button>
+                                    // Lógica de colores del Semáforo
+                                    let borderColor = 'border-neutral-200';
+                                    let bgAccent = 'bg-white';
+                                    if (p.isSuspended) { borderColor = 'border-neutral-300'; bgAccent = 'bg-neutral-100/60'; }
+                                    else if (isExpired) { borderColor = 'border-red-300'; bgAccent = 'bg-red-50/40'; }
+                                    else if (daysLeft <= 3 && !isTrial) { borderColor = 'border-orange-300'; bgAccent = 'bg-orange-50/40'; }
+                                    else if (isTrial) { borderColor = 'border-blue-200'; bgAccent = 'bg-blue-50/20'; }
+                                    else { borderColor = 'border-emerald-200'; bgAccent = 'bg-emerald-50/20'; }
+
+                                    return (
+                                    <div key={p.id} className={`${bgAccent} p-5 rounded-3xl border ${borderColor} shadow-sm relative overflow-hidden transition-all hover:shadow-md flex flex-col justify-between`}>
+                                        <div>
+                                            <div className="flex justify-between items-start mb-2 gap-2">
+                                                <div className="min-w-0">
+                                                    <h3 className="text-lg font-bold text-neutral-900 truncate">{p.business}</h3>
+                                                    <p className="text-xs text-neutral-500 truncate">{p.name} · {p.email}</p>
+                                                    <p className="text-xs font-bold text-brand-600 mt-0.5 truncate">{p.phone}</p>
+                                                </div>
+                                                {/* Botón Ojito / Modo Espía */}
+                                                <a href={`?p=${p.slug || p.id}`} target="_blank" title="Ver página pública" className="flex-shrink-0 w-9 h-9 bg-white border border-neutral-200 text-neutral-600 hover:text-brand-600 hover:border-brand-300 hover:shadow-sm rounded-xl flex items-center justify-center transition text-lg active:scale-95">
+                                                    👁️
+                                                </a>
+                                            </div>
+
+                                            <div className="mt-3 flex items-center justify-between">
+                                                {p.isSuspended ? <span className="inline-block bg-neutral-200 text-neutral-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-neutral-300">❌ Suspendido</span> :
+                                                isExpired ? <span className="inline-block bg-red-100 text-red-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-red-200">⛔ Vencido</span> :
+                                                isTrial ? <span className="inline-block bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-200">🎁 Prueba ({daysText})</span> :
+                                                daysLeft <= 3 ? <span className="inline-block bg-orange-100 text-orange-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-orange-200">⚠️ Vence pronto ({daysText})</span> :
+                                                <span className="inline-block bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-emerald-200">✅ Pago ({daysText})</span>}
+                                            </div>
+
+                                            {/* Botón Inteligente de WhatsApp */}
+                                            <a href={getSmartWaLink(p)} target="_blank" className={`w-full mt-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition border ${
+                                                p.isSuspended ? 'bg-neutral-100 text-neutral-700 border-neutral-300 hover:bg-neutral-200' :
+                                                isExpired ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200' :
+                                                isTrial ? 'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200' :
+                                                (daysLeft <= 3 && !isTrial) ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200' :
+                                                'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                                            }`}>
+                                                <IconWhatsapp /> {(!isTrial && daysLeft <= 3) || p.isSuspended || isExpired ? 'Avisar por WhatsApp' : 'Contactar por WhatsApp'}
+                                            </a>
+                                        </div>
+                                        
+                                        <div className="mt-4 pt-4 border-t border-neutral-200/50">
+                                            <button type="button" onClick={() => renewLicense(p)} className="w-full bg-neutral-900 text-white py-2.5 rounded-xl text-sm font-bold mb-2 hover:bg-neutral-800 active:scale-95 transition shadow-sm">
+                                                {isTrial ? 'Pasar a Cliente de Pago' : '+ Renovar 30 días'}
+                                            </button>
+                                            
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button type="button" onClick={() => toggleSuspend(p)} className="bg-white border border-neutral-300 text-neutral-700 py-2 rounded-xl text-xs font-bold hover:bg-neutral-100 active:scale-95 transition shadow-sm">
+                                                    {p.isSuspended ? 'Reactivar' : 'Suspender'}
+                                                </button>
+                                                <button type="button" onClick={() => deleteProf(p)} className="bg-white border border-red-200 text-red-600 py-2 rounded-xl text-xs font-bold hover:bg-red-50 active:scale-95 transition shadow-sm">
+                                                    Borrar Data
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            )})}
-                        </div>
+                                )})}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
         );
     }
-
+    
     // ===================== PAYWALL VIEW =====================
     function PaywallView({ userEmail, isSuspended, onClose }) {
         const [settings, setSettings] = useState(null);
@@ -1340,9 +1455,9 @@
         const [profile, setProfile]       = useState(null);
         const [apts, setApts]             = useState([]);
         const [pastApts, setPastApts]     = useState([]);
-        const [olderApts, setOlderApts]   = useState([]); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
-        const [loadingOlder, setLoadingOlder] = useState(false); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
-        const [olderLoaded, setOlderLoaded] = useState(false); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
+        const [olderApts, setOlderApts]   = useState([]); 
+        const [loadingOlder, setLoadingOlder] = useState(false); 
+        const [olderLoaded, setOlderLoaded] = useState(false); 
         const [waitlist, setWaitlist]     = useState([]);
         const [loading, setLoading]       = useState(true);
         const [activeTab, setActiveTab]   = useState('appointments');
@@ -1658,14 +1773,11 @@
             
             if (apt.cancelled) {
                 if (apt.cancelledBy === 'professional') {
-                    // Mensaje cuando VOS cancelás el turno
                     text = `Hola ${apt.client}, te escribo de ${profile.business}. Te pido mil disculpas, pero tuvimos que cancelar tu turno del ${formatDate(apt.date)} a las ${apt.time}hs por un imprevisto. Por favor, avisame si querés reprogramarlo. ¡Gracias por entender!`;
                 } else {
-                    // Mensaje cuando el CLIENTE cancela el turno (acá lo podés editar a tu gusto)
                     text = `Hola ${apt.client}, vimos que cancelaste tu turno del ${formatDate(apt.date)} a las ${apt.time}hs en ${profile.business}. Si necesitás volver a agendar más adelante, avisanos. ¡Saludos!`;
                 }
             } else {
-                // Mensaje normal de confirmación (toma la plantilla de tu configuración)
                 text = buildWAMsg(profile.waTemplate, apt, profile.business);
             }
             
