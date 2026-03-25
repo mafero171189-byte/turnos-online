@@ -324,6 +324,7 @@
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-8">
+                            {/* Tarjeta Profesional */}
                             <div className="bg-brand-50 rounded-4xl p-8 lg:p-10 border border-brand-100 hover:shadow-xl transition duration-300">
                                 <div className="w-14 h-14 bg-brand-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg"><IconBriefcase /></div>
                                 <h3 className="text-2xl font-bold mb-4 text-brand-900">Para el Profesional 👨‍💼</h3>
@@ -337,16 +338,21 @@
                                         <span><strong>Estadísticas Avanzadas:</strong> Controlá presentismo, clientes frecuentes y turnos cancelados de un vistazo.</span>
                                     </li>
                                     <li className="flex items-start gap-3">
-                                        <span className="text-xl">🚫</span>
-                                        <span><strong>Gestión de Días:</strong> Bloqueá feriados o vacaciones fácilmente para evitar reservas indeseadas.</span>
-                                    </li>
-                                    <li className="flex items-start gap-3">
                                         <span className="text-xl">📱</span>
                                         <span><strong>Integración WhatsApp:</strong> Plantillas automáticas para confirmar turnos con un solo clic.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">📝</span>
+                                        <span><strong>Notas Ocultas y Turnos Manuales:</strong> Agregá clientes a mano y dejate notas privadas que el cliente no verá.</span>
+                                    </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🔊</span>
+                                        <span><strong>Alertas en Tiempo Real:</strong> Recibí notificaciones sonoras en tu PC o celular cuando alguien reserva o cancela.</span>
                                     </li>
                                 </ul>
                             </div>
 
+                            {/* Tarjeta Cliente */}
                             <div className="bg-emerald-50 rounded-4xl p-8 lg:p-10 border border-emerald-100 hover:shadow-xl transition duration-300">
                                 <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg"><IconUser /></div>
                                 <h3 className="text-2xl font-bold mb-4 text-emerald-900">Para tus Clientes 🤳</h3>
@@ -361,13 +367,66 @@
                                     </li>
                                     <li className="flex items-start gap-3">
                                         <span className="text-xl">📅</span>
-                                        <span><strong>Autogestión:</strong> Pueden cancelar o reprogramar sus propios turnos de forma segura.</span>
+                                        <span><strong>Autogestión Fácil:</strong> Con su DNI y WhatsApp pueden ver, cancelar o reprogramar sus propios turnos.</span>
                                     </li>
                                     <li className="flex items-start gap-3">
                                         <span className="text-xl">🗺️</span>
                                         <span><strong>Ubicación y Calendario:</strong> Botón directo para Google Maps y descarga del evento a su calendario.</span>
                                     </li>
+                                    <li className="flex items-start gap-3">
+                                        <span className="text-xl">🔔</span>
+                                        <span><strong>Lista de Espera:</strong> Si no hay lugar, se anotan para que les avises en cuanto se libere un horario.</span>
+                                    </li>
                                 </ul>
+                            </div>
+                        </div>
+
+                        {/* NUEVA SECCIÓN: Menú del profesional detallado */}
+                        <div className="mt-20 pt-16 border-t border-neutral-100">
+                            <h3 className="text-3xl font-bold mb-3 text-center tracking-tight">El menú más completo para tu negocio</h3>
+                            <p className="text-center text-neutral-500 mb-10 max-w-2xl mx-auto">Tendrás acceso a un panel de control dividido en pestañas, diseñado para que gestiones todo sin perder tiempo.</p>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                                <div className="bg-brand-50/50 p-6 rounded-3xl border border-brand-100 hover:border-brand-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-brand-600 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconCalendar /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Agenda Activa</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Visualizá turnos de hoy y próximos. Contactá por WhatsApp o agregá reservas manuales fácilmente.</p>
+                                </div>
+                                <div className="bg-red-50/50 p-6 rounded-3xl border border-red-100 hover:border-red-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-red-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconBlock /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Cancelados</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Llevá un registro exacto de los turnos que cancelaste vos, o los que reprogramó el cliente.</p>
+                                </div>
+                                <div className="bg-amber-50/50 p-6 rounded-3xl border border-amber-100 hover:border-amber-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-amber-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconBell /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Lista de Espera</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Un registro automático de clientes interesados. Avisales con un solo clic cuando se libere un lugar.</p>
+                                </div>
+                                <div className="bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100 hover:border-emerald-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-emerald-600 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconHistory /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Historial</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Marcá quién asistió (✅) y quién faltó (❌). Consultá el registro completo de meses anteriores.</p>
+                                </div>
+                                <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 hover:border-blue-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-blue-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconChartBar /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Estadísticas</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Métricas de tasa de asistencia, turnos de la semana, días más concurridos y tus mejores clientes.</p>
+                                </div>
+                                <div className="bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100 hover:border-indigo-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-indigo-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconSettings /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Mi Perfil</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Personalizá tu link web, colores, logo, precio, mensaje automático, días laborales y horarios.</p>
+                                </div>
+                                <div className="bg-purple-50/50 p-6 rounded-3xl border border-purple-100 hover:border-purple-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-purple-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><span className="text-lg">🚫</span></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Días Bloqueados</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Cerrá tu agenda en fechas específicas por feriados o vacaciones para no recibir reservas no deseadas.</p>
+                                </div>
+                                <div className="bg-teal-50/50 p-6 rounded-3xl border border-teal-100 hover:border-teal-300 transition shadow-sm">
+                                    <div className="w-10 h-10 bg-white text-teal-500 rounded-xl flex items-center justify-center mb-4 shadow-sm"><IconNote /></div>
+                                    <h4 className="font-bold text-neutral-900 mb-2">Notas Privadas</h4>
+                                    <p className="text-xs text-neutral-500 leading-relaxed">Agregá observaciones en cada turno que solo vos vas a ver (ej. "debe dinero", "cliente puntual").</p>
+                                </div>
                             </div>
                         </div>
                     </div>
