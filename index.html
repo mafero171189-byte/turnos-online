@@ -467,7 +467,7 @@
         return (
             <>
                 {view === 'landing' ? <LandingView onStart={startApp} /> :
-                 view === 'auth' ? <AuthScreen setDialog={setDialog} setToast={setToast} /> :
+                 view === 'auth' ? <AuthScreen setDialog={setDialog} setToast={setToast} globalSettings={globalSettings} /> :
                  view === 'client' ? <ClientView profId={profId} setDialog={setDialog} setToast={setToast} /> : 
                  view === 'superadmin' ? <SuperAdminView user={user} setDialog={setDialog} setToast={setToast} /> : 
                  <AdminView user={user} setDialog={setDialog} setToast={setToast} globalSettings={globalSettings} />}
@@ -478,12 +478,21 @@
     }
 
     // ===================== AUTH =====================
-    function AuthScreen({ setDialog, setToast }) {
+    function AuthScreen({ setDialog, setToast, globalSettings }) {
         const [mode, setMode]             = useState('login');
         const [loading, setLoading]       = useState(false);
         const [phonePrefix, setPhonePrefix] = useState('54');
         const [phoneLocal, setPhoneLocal]   = useState('');
         const [showPassword, setShowPassword] = useState(false);
+
+        const isMaintenance = globalSettings?.maintenanceMode;
+
+        // Si activan el mantenimiento mientras alguien estaba en la pestaña de registro, lo forzamos a login
+        useEffect(() => {
+            if (isMaintenance && mode === 'register') {
+                setMode('login');
+            }
+        }, [isMaintenance, mode]);
 
         const handleSubmit = async (e) => {
             e.preventDefault(); setLoading(true);
@@ -499,6 +508,11 @@
                     await auth.signInWithEmailAndPassword(e.target.email.value, e.target.password.value);
                     setToast({ type:'success', message: 'Sesión iniciada' });
                 } else {
+                    if (isMaintenance) {
+                        setToast({ type:'error', message:'Los registros están pausados por mantenimiento.'});
+                        setLoading(false); return;
+                    }
+
                     const fullPhone = buildPhone(phonePrefix, phoneLocal);
                     if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Teléfono inválido.'}); setLoading(false); return; }
                     
@@ -537,6 +551,13 @@
                         <h1 className="text-3xl font-bold text-neutral-950 tracking-tighter">Turno Fácil<span className="text-brand-600">Pro</span></h1>
                     </div>
                     <div className="bg-white p-8 rounded-4xl shadow-2xl shadow-brand-100/50 border border-neutral-100">
+                        
+                        {isMaintenance && (
+                            <div className="bg-amber-100 text-amber-800 p-4 rounded-2xl mb-6 text-sm font-semibold text-center border border-amber-200">
+                                🛠️ Sistema en mantenimiento. Registros pausados temporalmente.
+                            </div>
+                        )}
+
                         <h2 className="text-xl font-semibold mb-1">
                             {mode==='login' ? '¡Hola de nuevo!' : mode==='register' ? 'Registro gratis (30 días)' : 'Recuperar contraseña'}
                         </h2>
@@ -591,7 +612,7 @@
                         </form>
                         
                         <div className="mt-6 text-center space-y-2">
-                            {mode !== 'register' && <button type="button" onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
+                            {mode !== 'register' && !isMaintenance && <button type="button" onClick={() => { setMode('register'); setShowPassword(false); }} className="w-full text-brand-600 text-sm font-medium">¿No tenés cuenta? Registrate gratis</button>}
                             {mode === 'login' && <button type="button" onClick={() => { setMode('forgot'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Olvidé mi contraseña</button>}
                             {mode !== 'login' && <button type="button" onClick={() => { setMode('login'); setShowPassword(false); }} className="w-full text-neutral-500 text-sm">Volver al inicio</button>}
                         </div>
@@ -600,7 +621,6 @@
             </div>
         );
     }
-    
 // ===================== SUPER ADMIN VIEW =====================
     function SuperAdminView({ user, setDialog, setToast }) {
         const [profs, setProfs] = useState([]);
