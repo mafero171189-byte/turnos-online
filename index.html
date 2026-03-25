@@ -148,14 +148,18 @@
         let cur = sh * 60 + sm; 
         let endM = eh * 60 + em;
         if (endM <= cur) endM += 24 * 60;
-        while (cur + durationMins <= endM) {
+        
+        let safeGuard = 0;
+        while (cur + durationMins <= endM && safeGuard < 100) {
             const h = Math.floor(cur / 60) % 24;
             const m = cur % 60;
             slots.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
             cur += durationMins;
+            safeGuard++;
         }
         return slots;
     };
+    
     const parseDateLocal = (s) => { if (!s || !s.includes('-')) return new Date(NaN); const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
     const formatDate    = (s) => s ? s.split('-').reverse().join('/') : '';
     const getTodayStr   = () => { 
@@ -179,9 +183,8 @@
             .replaceAll('{hora}', apt.time || '')
             .replaceAll('{negocio}', businessName || '');
 
-    // Abre Google Maps en Android y Apple Maps en iOS (Modificado para usar lat y lng si están disponibles)
     const openMaps = (address, lat, lng) => {
-        const query = (lat && lng) ? `${lat},${lng}` : encodeURIComponent(address);
+        const query = (lat && lng) ? `${lat},${lng}` : encodeURIComponent(address + ", Argentina");
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const url = isIOS
             ? `https://maps.apple.com/?q=${query}`
@@ -283,7 +286,7 @@
             <div className="min-h-screen bg-brand-50 font-sans text-neutral-900 selection:bg-brand-200">
                 <nav className="flex justify-between items-center p-6 lg:px-12 max-w-7xl mx-auto">
                     <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg shadow-brand-600/30">&#128197;</div>
+                        <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg shadow-brand-600/30">📅</div>
                         <span className="text-xl font-bold tracking-tight">Turno Fácil<span className="text-brand-600">Pro</span></span>
                     </div>
                     <button type="button" onClick={onStart} className="bg-white text-brand-700 hover:bg-brand-50 border border-brand-100 px-6 py-2.5 rounded-full font-semibold transition shadow-sm text-sm">
@@ -500,7 +503,7 @@
             <div className="min-h-screen flex items-center justify-center p-4 fade-in">
                 <div className="w-full max-w-md">
                     <div className="text-center mb-10">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-4xl shadow-xl shadow-brand-100 mb-4 border border-brand-100"><span className="text-4xl">&#128197;</span></div>
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-4xl shadow-xl shadow-brand-100 mb-4 border border-brand-100"><span className="text-4xl">📅</span></div>
                         <h1 className="text-3xl font-bold text-neutral-950 tracking-tighter">Turno Fácil<span className="text-brand-600">Pro</span></h1>
                     </div>
                     <div className="bg-white p-8 rounded-4xl shadow-2xl shadow-brand-100/50 border border-neutral-100">
@@ -567,7 +570,6 @@
             </div>
         );
     }
-
     // ===================== SUPER ADMIN VIEW =====================
     function SuperAdminView({ user, setDialog, setToast }) {
         const [profs, setProfs] = useState([]);
@@ -717,7 +719,7 @@
                                 </div>
                                 {mpPriceInput ? <p className="text-xs text-green-700 font-medium -mt-1">Precio: AR$ {Number(mpPriceInput).toLocaleString('es-AR')}</p> : null}
                                 <button type="submit" className="w-full bg-[#009ee3] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#0089c4] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
-                                    &#128190; GUARDAR PRECIO
+                                    💾 GUARDAR PRECIO
                                 </button>
                             </form>
                         </div>
@@ -731,7 +733,7 @@
                                     <input type="text" value={paypalPriceInput} onChange={handlePaypalChange} className="w-full pl-16 pr-4 py-3.5 bg-white border border-blue-200 rounded-xl outline-none focus:border-blue-500 text-lg font-bold text-neutral-800" required />
                                 </div>
                                 <button type="submit" className="w-full bg-[#003087] text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#001c56] active:scale-95 transition flex items-center justify-center gap-2 mt-2">
-                                    &#128190; GUARDAR PRECIO
+                                    💾 GUARDAR PRECIO
                                 </button>
                             </form>
                         </div>
@@ -819,8 +821,8 @@
             return (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4">
                     <div className="bg-white p-8 rounded-4xl shadow-2xl max-w-md w-full border border-neutral-100 text-center relative">
-                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
-                        <div className={`w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl`}>&#11088;</div>
+                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">×</button>
+                        <div className={`w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl`}>⭐</div>
                         <h2 className="text-xl font-bold tracking-tight mb-2">Renovación Anticipada</h2>
                         <p className="text-neutral-500 text-xs mb-6">Sumá 30 días a tu licencia actual sin esperar a que se corte el servicio.</p>
                         
@@ -851,7 +853,7 @@
             <div className="min-h-screen bg-brand-50 flex items-center justify-center p-6 fade-in">
                 <div className="bg-white p-8 rounded-4xl shadow-xl max-w-md w-full border border-neutral-100 text-center">
                     <div className={`w-20 h-20 ${isSuspended ? 'bg-red-100 text-red-600' : 'bg-brand-100 text-brand-600'} rounded-full flex items-center justify-center mx-auto mb-6 text-4xl`}>
-                        {isSuspended ? '&#10060;' : '&#128274;'}
+                        {isSuspended ? '❌' : '🔒'}
                     </div>
                     <h2 className="text-2xl font-bold tracking-tight mb-2">{isSuspended ? 'Cuenta Suspendida' : 'Tu licencia finalizó'}</h2>
                     <p className="text-neutral-500 text-sm mb-6">
@@ -959,7 +961,7 @@
         return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
                 <div className="bg-white p-6 sm:p-8 rounded-4xl shadow-2xl max-w-md w-full border border-neutral-100 relative max-h-[92vh] overflow-y-auto">
-                    <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
+                    <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">×</button>
                     <h2 className="text-xl font-bold mb-1">Agregar Turno Manual</h2>
                     <p className="text-sm text-neutral-500 mb-6">Reservá un turno en nombre de un cliente.</p>
 
@@ -1165,7 +1167,7 @@
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
                 <div className="bg-white rounded-4xl shadow-2xl max-w-lg w-full border border-neutral-100 overflow-hidden relative flex flex-col" style={{maxHeight:'90vh'}}>
                     <div className="p-5 border-b border-neutral-100">
-                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">&times;</button>
+                        <button type="button" onClick={onClose} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light leading-none">×</button>
                         <h2 className="text-lg font-bold mb-3 pr-8">📍 Seleccionar dirección</h2>
                         <div className="flex gap-2">
                             <input
@@ -1338,6 +1340,9 @@
         const [profile, setProfile]       = useState(null);
         const [apts, setApts]             = useState([]);
         const [pastApts, setPastApts]     = useState([]);
+        const [olderApts, setOlderApts]   = useState([]); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
+        const [loadingOlder, setLoadingOlder] = useState(false); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
+        const [olderLoaded, setOlderLoaded] = useState(false); // <-- NUEVO ESTADO HISTORIAL ANTIGUO
         const [waitlist, setWaitlist]     = useState([]);
         const [loading, setLoading]       = useState(true);
         const [activeTab, setActiveTab]   = useState('appointments');
@@ -1388,7 +1393,15 @@
 
             const subscribeApts = () => {
                 if (!active) return;
-                unsubApts = db.collection("appointments").where("profId","==",user.uid).onSnapshot(
+                
+                const pastDate = new Date();
+                pastDate.setDate(pastDate.getDate() - 30);
+                const minDate = `${pastDate.getFullYear()}-${String(pastDate.getMonth()+1).padStart(2,'0')}-${String(pastDate.getDate()).padStart(2,'0')}`;
+
+                unsubApts = db.collection("appointments")
+                    .where("profId","==",user.uid)
+                    .where("date", ">=", minDate)
+                    .onSnapshot(
                     (snap) => {
                         if (!active) return;
                         const today = getTodayStr();
@@ -1405,10 +1418,7 @@
                         const all = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         allAptsRef.current = all;
                         
-                        const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-                        const sixtyStr = `${sixtyDaysAgo.getFullYear()}-${String(sixtyDaysAgo.getMonth()+1).padStart(2,'0')}-${String(sixtyDaysAgo.getDate()).padStart(2,'0')}`;
-                        
-                        const newList = all.filter(a => !isPast(a) || (a.cancelled && a.date >= sixtyStr)).sort((a,b) => {
+                        const newList = all.filter(a => !isPast(a) || (a.cancelled && a.date >= minDate)).sort((a,b) => {
                             if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
                             return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                         });
@@ -1458,9 +1468,12 @@
                     return false;
                 };
                 const all = allAptsRef.current;
-                const sixtyDaysAgoT = new Date(); sixtyDaysAgoT.setDate(sixtyDaysAgoT.getDate() - 60);
-                const sixtyStrT = `${sixtyDaysAgoT.getFullYear()}-${String(sixtyDaysAgoT.getMonth()+1).padStart(2,'0')}-${String(sixtyDaysAgoT.getDate()).padStart(2,'0')}`;
-                setApts(all.filter(a => !isPastNow(a) || (a.cancelled && a.date >= sixtyStrT)).sort((a,b) => {
+                
+                const pastDateT = new Date();
+                pastDateT.setDate(pastDateT.getDate() - 30);
+                const minDateT = `${pastDateT.getFullYear()}-${String(pastDateT.getMonth()+1).padStart(2,'0')}-${String(pastDateT.getDate()).padStart(2,'0')}`;
+                
+                setApts(all.filter(a => !isPastNow(a) || (a.cancelled && a.date >= minDateT)).sort((a,b) => {
                     if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
                     return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                 }));
@@ -1502,6 +1515,32 @@
         const displaySlug = profile.slug || user.uid;
         const shareUrl = window.location.origin + window.location.pathname + "?p=" + displaySlug;
         
+        const loadOlderHistory = async () => {
+            setLoadingOlder(true);
+            try {
+                const pastDate = new Date();
+                pastDate.setDate(pastDate.getDate() - 30);
+                const minDate = `${pastDate.getFullYear()}-${String(pastDate.getMonth()+1).padStart(2,'0')}-${String(pastDate.getDate()).padStart(2,'0')}`;
+
+                const snap = await db.collection("appointments")
+                    .where("profId", "==", user.uid)
+                    .where("date", "<", minDate)
+                    .get();
+
+                const oldList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .filter(a => !a.cancelled)
+                    .sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+
+                setOlderApts(oldList);
+                setOlderLoaded(true);
+            } catch (err) {
+                console.error(err);
+                setToast({ type: 'error', message: 'Error al cargar el historial antiguo.' });
+            } finally {
+                setLoadingOlder(false);
+            }
+        };
+
         const handleLogoUpload = (e) => {
             const file = e.target.files[0]; if (!file) return;
             if (file.size > 5000000) { setToast({type:'error', message:'La imagen es muy pesada. Máximo 5MB.'}); return; }
@@ -1509,23 +1548,39 @@
             const url = URL.createObjectURL(file);
             img.onload = () => {
                 URL.revokeObjectURL(url);
-                const MAX = 300;
+                
+                // Punto dulce: 250px. Excelente calidad para un logo, peso mínimo.
+                const MAX = 250; 
                 let { width, height } = img;
                 if (width > height) { if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; } }
                 else { if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; } }
+                
                 const canvas = document.createElement('canvas');
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d');
+                
+                // Fondo blanco (para que los PNG transparentes no queden con fondo negro en JPEG)
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, width, height);
+                
+                // Filtro de suavizado HD para evitar bordes pixelados
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
                 ctx.drawImage(img, 0, 0, width, height);
-                const compressed = canvas.toDataURL('image/jpeg', 0.75);
-                const sizeKB = Math.round((compressed.length * 3) / 4 / 1024);
-                const final = sizeKB > 200 ? canvas.toDataURL('image/jpeg', 0.5) : compressed;
+                
+                // Intentamos usar formato WebP al 80% (calidad HD, peso pluma)
+                let final = canvas.toDataURL('image/webp', 0.8);
+                
+                // Si el navegador es muy viejo y no soporta WebP, o si pesa más de ~60KB, usamos JPEG
+                if (final.startsWith('data:image/png') || final.length > 80000) {
+                    final = canvas.toDataURL('image/jpeg', 0.8);
+                }
+                
                 setLogoPreview(final);
-                setToast({type:'success', message:`Logo cargado (~${Math.round((final.length*3)/4/1024)}KB)`});
+                setToast({type:'success', message:`Logo subido en alta calidad (~${Math.round((final.length*3)/4/1024)}KB)`});
             };
-            img.onerror = () => { URL.revokeObjectURL(url); setToast({type:'error', message:'No se pudo leer la imagen. Intentá con otro archivo.'}); };
+            img.onerror = () => { URL.revokeObjectURL(url); setToast({type:'error', message:'No se pudo leer la imagen.'}); };
             img.src = url;
         };
 
@@ -1598,7 +1653,6 @@
             } finally { setSaving(false); }
         };
 
-        // Helper para el botón de WhatsApp
         const getWaLink = (apt) => {
             let text = '';
             if (apt.cancelled && apt.cancelledBy === 'professional') {
@@ -1663,7 +1717,7 @@
                 {notesModal && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm fade-in p-4" onClick={e => { if (e.target===e.currentTarget) setNotesModal(null); }}>
                         <div className="bg-white p-6 rounded-4xl shadow-2xl max-w-sm w-full border border-neutral-100 relative">
-                            <button type="button" onClick={() => setNotesModal(null)} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">&times;</button>
+                            <button type="button" onClick={() => setNotesModal(null)} className="absolute top-4 right-5 text-neutral-400 hover:text-neutral-900 text-3xl font-light">×</button>
                             <h3 className="font-bold text-lg mb-1">Nota Interna</h3>
                             <p className="text-xs text-neutral-500 mb-3">Solo vos podés ver esta nota. El cliente no la ve.</p>
                             <p className="text-sm font-medium text-neutral-700 mb-2">{notesModal.apt.client} — {formatDate(notesModal.apt.date)} {notesModal.apt.time}hs</p>
@@ -1773,11 +1827,29 @@
                     <div className="fade-in">
                         <h2 className="text-2xl font-semibold mb-6">Historial de Turnos</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {pastApts.length === 0 ? <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos pasados.</p>
-                            : pastApts.map(a => (
-                                <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} setDialog={setDialog} />
-                            ))}
+                            {pastApts.length === 0 && olderApts.length === 0 ? (
+                                <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">No hay turnos pasados recientes.</p>
+                            ) : (
+                                pastApts.map(a => <HistoryCard key={a.id} a={a} profile={profile} setToast={setToast} setDialog={setDialog} />)
+                            )}
+                            
+                            {/* Turnos antiguos cargados a demanda */}
+                            {olderApts.map(a => <HistoryCard key={`old-${a.id}`} a={a} profile={profile} setToast={setToast} setDialog={setDialog} />)}
                         </div>
+
+                        {/* Botón para cargar historial antiguo */}
+                        {!olderLoaded && (
+                            <div className="mt-8 text-center">
+                                <button 
+                                    type="button" 
+                                    onClick={loadOlderHistory} 
+                                    disabled={loadingOlder}
+                                    className="bg-white border border-neutral-200 text-neutral-600 px-6 py-3 rounded-2xl text-sm font-semibold hover:bg-neutral-50 active:scale-95 transition disabled:opacity-50"
+                                >
+                                    {loadingOlder ? 'Cargando turnos antiguos...' : 'Cargar turnos anteriores a 30 días'}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -2060,7 +2132,6 @@
             </div>
         );
     }
-
     // ===================== CLIENT =====================
     function ClientView({ profId, setDialog, setToast }) {
         const [prof, setProf]               = useState(null);
@@ -2225,7 +2296,8 @@
                     }
                     tx.set(holdRef, { 
                         profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt,
-                        serverCreatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        serverCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        creatorUid: auth.currentUser?.uid
                     });
                 });
                 currentHoldRef.current = slotId;
@@ -2253,6 +2325,7 @@
             if (wLocal.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
             setBooking(true);
             try {
+                if (!auth.currentUser) await auth.signInAnonymously();
                 await db.collection("waitlists").add({
                     profId,
                     date: selectedDate,
@@ -2297,12 +2370,25 @@
                     clientUid: currentUid,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
+                
+                // --- CORRECCIÓN DE SEGURIDAD 2C (Validación estricta de tiempo) ---
                 await db.runTransaction(async (tx) => {
                     const slotDoc = await tx.get(slotRef);
                     if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado por otra persona.");
+                    
+                    const now = new Date();
+                    const todayStr = getTodayStr();
+                    if (selectedDate < todayStr) throw new Error("La fecha seleccionada ya pasó.");
+                    if (selectedDate === todayStr) {
+                        const nowMins = now.getHours() * 60 + now.getMinutes();
+                        const [sh,sm] = selectedTime.split(':').map(Number);
+                        if (sh * 60 + sm <= nowMins) throw new Error("El horario seleccionado acaba de expirar. Elegí otro.");
+                    }
+
                     tx.set(slotRef, aptData);
                     tx.delete(holdRef); 
                 });
+                
                 clearHoldState();
                 currentHoldRef.current = null;
                 remainingSecsRef.current = 120; 
@@ -2317,7 +2403,7 @@
         if (profExpired) return (
             <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
                 <div className="bg-white p-8 rounded-4xl shadow-xl max-w-sm w-full border border-neutral-100">
-                    <span className="text-5xl block mb-4">&#9888;&#65039;</span>
+                    <span className="text-5xl block mb-4">⚠️</span>
                     <h2 className="text-xl font-bold mb-2">Servicio no disponible</h2>
                     <p className="text-neutral-500 text-sm">El sistema de reservas de este negocio se encuentra temporalmente inactivo.</p>
                 </div>
@@ -2348,7 +2434,7 @@
             return (
                 <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
                     <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
-                        <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">&#10003;</div>
+                        <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">✓</div>
                         <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
                         <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business}</p>
                         <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-4">
@@ -2417,7 +2503,7 @@
                 </div>
 
                 <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-2xl border border-neutral-100 shadow-sm">
-                    <button type="button" onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>&#128197; Reservar</button>
+                    <button type="button" onClick={() => setClientView('book')} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='book' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>📅 Reservar</button>
                     <button type="button" onClick={() => { abandonHold(true); setSelectedTime(''); setClientView('cancel'); }} className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${clientView==='cancel' ? 'custom-bg shadow-md' : 'text-neutral-500'}`}>Mis turnos</button>
                 </div>
 
@@ -2587,7 +2673,7 @@
                 {myApts !== null && (
                     <div className="fade-in">
                         {myApts.length === 0 ? (
-                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">&#128269;</span>No encontramos turnos para este DNI y celular.</div>
+                            <div className="text-center py-8 text-neutral-500 text-sm bg-neutral-50 rounded-2xl border border-neutral-100"><span className="text-3xl block mb-2">🔍</span>No encontramos turnos para este DNI y celular.</div>
                         ) : (
                             <div className="space-y-3">
                                 {myApts.map(apt => (
@@ -2601,7 +2687,7 @@
                                         </div>
                                         {!apt.cancelled && !apt.addedManually && (
                                             <div className="flex gap-2 pt-1 border-t border-neutral-200">
-                                                <button type="button" onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">&#128197; Reprogramar</button>
+                                                <button type="button" onClick={() => rescheduleApt(apt)} className="flex-1 text-brand-600 bg-brand-50 border border-brand-100 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition">📅 Reprogramar</button>
                                                 <button type="button" onClick={() => cancelApt(apt)} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition"><IconTrash /></button>
                                             </div>
                                         )}
@@ -2624,4 +2710,4 @@
     root.render(<ErrorBoundary><App /></ErrorBoundary>);
 </script>
 </body>
-</html>   
+</html>
