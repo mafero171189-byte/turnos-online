@@ -1658,11 +1658,32 @@
         const [showRenewModal, setShowRenewModal] = useState(false);
         const [showAddModal, setShowAddModal] = useState(false);
         const [saving, setSaving] = useState(false);
+        const [audioBlocked, setAudioBlocked] = useState(false); // NUEVO ESTADO PARA EL CARTEL DE AUDIO
 
         const prevAptsRef  = useRef(new Map()); 
         const initialized = useRef(false);
         const allAptsRef  = useRef([]);
         const profileConfigRef = useRef(null);
+
+        // NUEVO: Detector de bloqueo de audio
+        useEffect(() => {
+            const ctx = getAudioCtx();
+            if (ctx && ctx.state === 'suspended') {
+                setAudioBlocked(true);
+            }
+            
+            // Truco: si el usuario hace clic en CUALQUIER lugar de la pantalla, destrabamos el audio de fondo y ocultamos el cartel
+            const handleAnyClick = () => {
+                const currentCtx = getAudioCtx();
+                if (currentCtx && currentCtx.state === 'suspended') {
+                    currentCtx.resume().then(() => setAudioBlocked(false)).catch(()=>{});
+                } else if (currentCtx && currentCtx.state === 'running') {
+                    setAudioBlocked(false);
+                }
+            };
+            document.addEventListener('click', handleAnyClick);
+            return () => document.removeEventListener('click', handleAnyClick);
+        }, []);
 
         useEffect(() => {
             if (user && !user.isAnonymous) {
@@ -2075,6 +2096,23 @@
                     <div className="bg-amber-100 border border-amber-200 text-amber-900 p-4 mb-6 rounded-2xl shadow-sm flex items-center gap-3 fade-in">
                         <span className="text-2xl">📢</span>
                         <p className="text-sm font-medium">{globalSettings.broadcastMessage}</p>
+                    </div>
+                )}
+
+                {/* NUEVO: CARTEL DE AUDIO BLOQUEADO */}
+                {audioBlocked && (
+                    <div onClick={() => {
+                        const ctx = getAudioCtx();
+                        if (ctx && ctx.state === 'suspended') ctx.resume().then(() => setAudioBlocked(false)).catch(()=>{});
+                    }} className="bg-blue-50 border border-blue-200 text-blue-900 p-4 mb-6 rounded-2xl shadow-sm flex items-center justify-between gap-3 fade-in cursor-pointer hover:bg-blue-100 transition active:scale-[0.99]">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">🔊</span>
+                            <div>
+                                <p className="text-sm font-bold">Activar sonido de notificaciones</p>
+                                <p className="text-xs text-blue-700">Tu navegador silenció la pestaña. Hacé clic acá para habilitar las alertas sonoras.</p>
+                            </div>
+                        </div>
+                        <button type="button" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm whitespace-nowrap">Activar</button>
                     </div>
                 )}
 
