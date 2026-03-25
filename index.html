@@ -1655,13 +1655,23 @@
 
         const getWaLink = (apt) => {
             let text = '';
-            if (apt.cancelled && apt.cancelledBy === 'professional') {
-                text = `Hola ${apt.client}, te escribo de ${profile.business}. Te pido mil disculpas, pero tuvimos que cancelar tu turno del ${formatDate(apt.date)} a las ${apt.time}hs por un imprevisto. Por favor, avisame si querés reprogramarlo. ¡Gracias por entender!`;
+            
+            if (apt.cancelled) {
+                if (apt.cancelledBy === 'professional') {
+                    // Mensaje cuando VOS cancelás el turno
+                    text = `Hola ${apt.client}, te escribo de ${profile.business}. Te pido mil disculpas, pero tuvimos que cancelar tu turno del ${formatDate(apt.date)} a las ${apt.time}hs por un imprevisto. Por favor, avisame si querés reprogramarlo. ¡Gracias por entender!`;
+                } else {
+                    // Mensaje cuando el CLIENTE cancela el turno (acá lo podés editar a tu gusto)
+                    text = `Hola ${apt.client}, vimos que cancelaste tu turno del ${formatDate(apt.date)} a las ${apt.time}hs en ${profile.business}. Si necesitás volver a agendar más adelante, avisanos. ¡Saludos!`;
+                }
             } else {
+                // Mensaje normal de confirmación (toma la plantilla de tu configuración)
                 text = buildWAMsg(profile.waTemplate, apt, profile.business);
             }
+            
             return `https://wa.me/${apt.phone}?text=${encodeURIComponent(text)}`;
         };
+
 
         const renderAptCard = (a) => (
             <div key={a.id} className={`p-6 rounded-3xl shadow-sm border ${a.cancelled ? 'bg-red-50 border-red-200 opacity-80' : 'bg-white border-neutral-100'}`}>
