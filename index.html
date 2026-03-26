@@ -381,7 +381,7 @@
                             </div>
                         </div>
 
-                        {/* NUEVA SECCIÓN: Menú del profesional detallado */}
+                        {/* Menú del profesional detallado */}
                         <div className="mt-20 pt-16 border-t border-neutral-100">
                             <h3 className="text-3xl font-bold mb-3 text-center tracking-tight">El menú más completo para tu negocio</h3>
                             <p className="text-center text-neutral-500 mb-10 max-w-2xl mx-auto">Tendrás acceso a un panel de control dividido en pestañas, diseñado para que gestiones todo sin perder tiempo.</p>
@@ -432,6 +432,45 @@
                     </div>
                 </section>
 
+                {/* --- NUEVA SECCIÓN: PREGUNTAS FRECUENTES --- */}
+                <section className="bg-brand-50/30 py-24 border-t border-neutral-100">
+                    <div className="max-w-4xl mx-auto px-6 lg:px-12">
+                        <div className="text-center mb-16">
+                            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight mb-4">Preguntas Frecuentes</h2>
+                            <p className="text-lg text-neutral-500">Todo lo que necesitás saber antes de empezar.</p>
+                        </div>
+                        
+                        <div className="space-y-6">
+                            <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
+                                <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Mis clientes necesitan descargar una aplicación?</h4>
+                                <p className="text-neutral-600 text-sm leading-relaxed">¡Para nada! Tus clientes ingresan a través de tu link web personalizado (ej: turnofacil.pro/?p=tu-negocio) desde cualquier navegador en su celular o computadora. Es rápido y sin barreras.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
+                                <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Tiene algún costo?</h4>
+                                <p className="text-neutral-600 text-sm leading-relaxed">Ofrecemos 30 días de prueba gratis para que uses todas las funciones sin tarjeta de crédito. Una vez finalizada la prueba, podés abonar una suscripción mensual súper accesible para mantener tu negocio funcionando al 100%.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
+                                <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Cómo funciona el contacto por WhatsApp?</h4>
+                                <p className="text-neutral-600 text-sm leading-relaxed">El sistema genera un mensaje automático con el nombre del cliente, fecha y hora del turno. Al hacer clic en "Contactar" desde tu panel, se abre WhatsApp (App o Web) listo para enviar directamente desde TU propio número de teléfono.</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
+                                <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Qué pasa si dos personas intentan reservar el mismo horario a la vez?</h4>
+                                <p className="text-neutral-600 text-sm leading-relaxed">Contamos con un sistema anti-choques. En cuanto un cliente selecciona un horario, este se bloquea temporalmente por 2 minutos mientras completa sus datos. Si no lo hace, se libera. Nunca tendrás turnos duplicados.</p>
+                            </div>
+                        </div>
+
+                        {/* Banner interno de soporte en FAQ */}
+                        <div className="mt-12 bg-emerald-50 border border-emerald-200 rounded-3xl p-8 text-center flex flex-col items-center">
+                            <h4 className="text-xl font-bold text-emerald-900 mb-2">¿Te quedó alguna otra duda?</h4>
+                            <p className="text-emerald-700 text-sm mb-6 max-w-lg">Escribinos directamente y te ayudamos a resolver tus consultas o configurar tu cuenta paso a paso.</p>
+                            <a href="https://wa.me/5491135654094?text=Hola!%20Estoy%20en%20la%20página%20de%20Turno%20Fácil%20Pro%20y%20tengo%20una%20consulta." target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-[#25D366] text-white px-8 py-4 rounded-2xl font-bold text-sm hover:bg-[#20bd5a] transition shadow-lg shadow-emerald-600/20 active:scale-95">
+                                <IconWhatsapp /> Hablar con Soporte Técnico
+                            </a>
+                        </div>
+                    </div>
+                </section>
+                {/* --- FIN NUEVA SECCIÓN --- */}
+
                 <section className="py-24 px-6 max-w-3xl mx-auto text-center">
                     <h2 className="text-4xl font-bold mb-6 tracking-tight">¿Listo para profesionalizar tu servicio?</h2>
                     <p className="text-lg text-neutral-500 mb-10 max-w-xl mx-auto">Únete a los profesionales que ya no pierden tiempo anotando turnos en papel o por chat. Prueba todas las funciones hoy mismo.</p>
@@ -443,10 +482,21 @@
                 <footer className="border-t border-neutral-200 py-8 text-center text-neutral-400 text-sm">
                     <p>© {new Date().getFullYear()} Turno Fácil Pro. Todos los derechos reservados.</p>
                 </footer>
+
+                {/* --- BOTÓN FLOTANTE DE WHATSAPP --- */}
+                <a href="https://wa.me/5491135654094?text=Hola!%20Quiero%20saber%20más%20sobre%20Turno%20Fácil%20Pro."
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:bg-[#20bd5a] hover:scale-110 transition-all duration-300 flex items-center justify-center group">
+                    <IconWhatsapp />
+                    <span className="absolute right-full mr-4 bg-white text-neutral-800 text-xs font-bold px-3 py-2 rounded-xl shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-neutral-100">
+                        ¿Necesitás ayuda?
+                    </span>
+                </a>
+                {/* --- FIN BOTÓN FLOTANTE --- */}
             </div>
         );
     }
-
     // ===================== MAINTENANCE VIEW =====================
     function MaintenanceView() {
         return (
@@ -1248,7 +1298,6 @@
             </div>
         );
     }
-
     // ===================== ADD APPOINTMENT MODAL (PROFESSIONAL) =====================
     function AddAppointmentModal({ profId, profile, setToast, onClose }) {
         const [selDate, setSelDate]       = useState('');
