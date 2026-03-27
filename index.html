@@ -284,7 +284,14 @@
     };
 
     // ===================== LANDING PAGE =====================
-    function LandingView({ onStart }) {
+    function LandingView({ onStart, paymentSettings }) {
+        // Detectamos si Firebase todavía está cargando los datos
+        const isLoadingPrice = paymentSettings === null;
+        
+        // Si está cargando mostramos '...', sino formateamos el precio que llegó
+        const mpPriceFormatted = isLoadingPrice ? '...' : Number(paymentSettings.mpPrice || 5000).toLocaleString('es-AR');
+        const paypalPrice = isLoadingPrice ? '...' : (paymentSettings.paypalPrice || '15');
+
         return (
             <div className="min-h-screen bg-brand-50 font-sans text-neutral-900 selection:bg-brand-200">
                 <nav className="flex justify-between items-center p-6 lg:px-12 max-w-7xl mx-auto">
@@ -308,10 +315,13 @@
                         <p className="text-xl text-neutral-500 leading-relaxed max-w-2xl font-medium">
                             Olvídate de responder mensajes para dar turnos. Turno Fácil Pro es la herramienta definitiva para profesionales que quieren ahorrar tiempo, modernizar su atención y organizar sus días sin estrés.
                         </p>
-                        <div className="flex flex-col sm:flex-row gap-4 pt-6">
+                        <div className="flex flex-col items-center gap-4 pt-6">
                             <button type="button" onClick={onStart} className="bg-brand-600 hover:bg-brand-700 text-white px-8 py-4 rounded-2xl font-bold text-lg transition shadow-xl shadow-brand-600/30 flex items-center justify-center gap-2 active:scale-95">
-                                Comenzar prueba gratis por 30 dias
+                                Comenzar prueba gratis por 30 días
                             </button>
+                            <p className="text-sm text-neutral-500 font-medium">
+                                Luego solo <strong>AR {mpPriceFormatted} / mes</strong> (o {paypalPrice} USD). Sin comisiones.
+                            </p>
                         </div>
                     </div>
                 </header>
@@ -447,7 +457,7 @@
                             </div>
                             <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
                                 <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Tiene algún costo?</h4>
-                                <p className="text-neutral-600 text-sm leading-relaxed">Ofrecemos 30 días de prueba gratis para que uses todas las funciones sin tarjeta de crédito. Una vez finalizada la prueba, podés abonar una suscripción mensual súper accesible para mantener tu negocio funcionando al 100%.</p>
+                                <p className="text-neutral-600 text-sm leading-relaxed">Ofrecemos 30 días de prueba gratis para que uses todas las funciones sin tarjeta de crédito. Una vez finalizada la prueba, la suscripción mensual tiene un valor fijo de <strong>AR {mpPriceFormatted}</strong> (o {paypalPrice} USD). Es un pago súper accesible para mantener tu negocio funcionando al 100%, ¡sin comisiones por turnos!</p>
                             </div>
                             <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm hover:border-brand-300 transition-colors">
                                 <h4 className="text-lg font-bold text-neutral-900 mb-2">¿Cómo funciona el contacto por WhatsApp?</h4>
@@ -518,13 +528,18 @@
         const [dialog, setDialog] = useState(null);
         const [toast, setToast]   = useState(null);
         const [globalSettings, setGlobalSettings] = useState(null);
+        const [paymentSettings, setPaymentSettings] = useState(null);
 
         useEffect(() => {
             const unsubSettings = db.collection('settings').doc('global').onSnapshot(doc => {
                 if(doc.exists) setGlobalSettings(doc.data());
                 else setGlobalSettings({});
             });
-            return () => unsubSettings();
+            const unsubPayment = db.collection('settings').doc('payment').onSnapshot(doc => {
+                if(doc.exists) setPaymentSettings(doc.data());
+                else setPaymentSettings({ mpPrice: '5000', paypalPrice: '15' });
+            });
+            return () => { unsubSettings(); unsubPayment(); };
         }, []);
 
         useEffect(() => {
@@ -575,8 +590,7 @@
 
         return (
             <>
-                {view === 'landing' ? <LandingView onStart={startApp} /> :
-                 view === 'auth' ? <AuthScreen setDialog={setDialog} setToast={setToast} globalSettings={globalSettings} /> :
+                {view === 'landing' ? <LandingView onStart={startApp} paymentSettings={paymentSettings} /> :                 view === 'auth' ? <AuthScreen setDialog={setDialog} setToast={setToast} globalSettings={globalSettings} /> :
                  view === 'client' ? <ClientView profId={profId} setDialog={setDialog} setToast={setToast} /> : 
                  view === 'superadmin' ? <SuperAdminView user={user} setDialog={setDialog} setToast={setToast} /> : 
                  <AdminView user={user} setDialog={setDialog} setToast={setToast} globalSettings={globalSettings} />}
@@ -1210,13 +1224,20 @@
         const [settings, setSettings] = useState(null);
         
         useEffect(() => {
-            let mounted = true;
-            db.collection("settings").doc("payment").get().then(doc => {
-                if (!mounted) return;
-                if (doc.exists) setSettings(doc.data());
-                else setSettings({ mpPrice: '5000', paypalPrice: '15' });
-            }).catch(() => { if (mounted) setSettings({ mpPrice: '5000', paypalPrice: '15' }); });
-            return () => { mounted = false; };
+            // Usamos onSnapshot para que los precios se actualicen en tiempo real
+            const unsub = db.collection("settings").doc("payment").onSnapshot(
+                doc => {
+                    if (doc.exists) setSettings(doc.data());
+                    else setSettings({ mpPrice: '5000', paypalPrice: '15' });
+                },
+                error => {
+                    console.warn("Error cargando precios:", error);
+                    setSettings({ mpPrice: '5000', paypalPrice: '15' });
+                }
+            );
+            
+            // Limpiamos el listener cuando se cierra la ventana
+            return () => unsub();
         }, []);
 
         const waMessage = encodeURIComponent(`Hola! Acabo de realizar el pago para renovar la licencia de Turno Fácil Pro por 30 días.\n\nMi correo registrado es: *${userEmail}*\n\nTe adjunto mi comprobante de pago:`);
