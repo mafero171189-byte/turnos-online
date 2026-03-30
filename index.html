@@ -131,7 +131,12 @@
         { code:'57',  label:'+57 CO' }, { code:'51',  label:'+51 PE' }, { code:'34',  label:'+34 ES' },
         { code:'1',   label:'+1 US'  },
     ];
-    const buildPhone = (prefix, local) => prefix + local.replace(/\D/g,'');
+    const buildPhone = (prefix, local) => {
+        const cleanLocal = local.replace(/\D/g,'');
+        // Argentina: WhatsApp exige el "9" entre el 54 y el número de área (ej: 549 11 XXXX-XXXX)
+        if (String(prefix) === '54') return `549${cleanLocal.replace(/^9/, '')}`;
+        return prefix + cleanLocal;
+    };
 
     const PhoneInput = ({ namePrefix='phonePrefix', nameLocal='phoneLocal', prefix, onPrefixChange, value, onChange, placeholder='1122334455', required=false }) => (
         <div className="flex">
@@ -848,7 +853,7 @@
         };
 
         const deleteProf = async (prof) => {
-            setDialog({ type: 'confirm', title: 'Borrar Permanentemente', message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos. El usuario de Auth no se borra. Esto no se deshace.`, onConfirm: async () => { setLoading(true); try { const [apts, holds, waitlists] = await Promise.all([ db.collection("appointments").where("profId", "==", prof.id).get(), db.collection("holds").where("profId", "==", prof.id).get(), db.collection("waitlists").where("profId", "==", prof.id).get() ]); const chunkSize = 499; const docs = [...apts.docs, ...holds.docs, ...waitlists.docs, { ref: db.collection("professionals").doc(prof.id) }]; for (let i = 0; i < docs.length; i += chunkSize) { const batch = db.batch(); docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref)); await batch.commit(); } setToast({ type:'success', message: 'Datos borrados.' }); } catch(err) { setToast({ type:'error', message: 'Error al borrar.' }); } finally { setLoading(false); } } });
+            setDialog({ type: 'confirm', title: 'Borrar Permanentemente', message: `¡CUIDADO! Estás por borrar a ${prof.business} y TODOS sus turnos. El usuario de Auth no se borra. Esto no se deshace.`, onConfirm: async () => { setLoading(true); try { const [apts, holds, waitlists, paymentsSnap] = await Promise.all([ db.collection("appointments").where("profId", "==", prof.id).get(), db.collection("holds").where("profId", "==", prof.id).get(), db.collection("waitlists").where("profId", "==", prof.id).get(), db.collection("payments").where("profId", "==", prof.id).get() ]); const chunkSize = 499; const docs = [...apts.docs, ...holds.docs, ...waitlists.docs, ...paymentsSnap.docs, { ref: db.collection("professionals").doc(prof.id) }]; for (let i = 0; i < docs.length; i += chunkSize) { const batch = db.batch(); docs.slice(i, i + chunkSize).forEach(d => batch.delete(d.ref)); await batch.commit(); } setToast({ type:'success', message: 'Datos borrados.' }); } catch(err) { setToast({ type:'error', message: 'Error al borrar.' }); } finally { setLoading(false); } } });
         };
 
         const downloadBackup = async () => {
@@ -878,16 +883,18 @@
                 try {
                     let d = new Date(); d.setMonth(d.getMonth() - 6);
                     let limitDate = d.toISOString().split('T')[0];
-                    const snap = await db.collection("appointments").where("date", "<", limitDate).get();
-                    if(snap.empty) { setToast({type:'success', message:'No hay turnos tan antiguos para borrar.'}); setLoading(false); return; }
-                    
-                    const chunkSize = 499;
-                    for (let i = 0; i < snap.docs.length; i += chunkSize) {
+                    // Borrado por lotes reales con limit() para evitar colapso de memoria
+                    let borrados = 0;
+                    while (true) {
+                        const snap = await db.collection("appointments").where("date", "<", limitDate).limit(400).get();
+                        if (snap.empty) break;
                         const batch = db.batch();
-                        snap.docs.slice(i, i + chunkSize).forEach(doc => batch.delete(doc.ref));
+                        snap.docs.forEach(doc => batch.delete(doc.ref));
                         await batch.commit();
+                        borrados += snap.size;
                     }
-                    setToast({type:'success', message:`Se eliminaron ${snap.size} turnos antiguos.`});
+                    if (borrados === 0) { setToast({type:'success', message:'No hay turnos tan antiguos para borrar.'}); setLoading(false); return; }
+                    setToast({type:'success', message:`Se eliminaron ${borrados} turnos antiguos.`});
                 } catch(e) { setToast({type:'error', message:'Error durante la purga.'}); }
                 setLoading(false);
             }});
@@ -1814,12 +1821,6 @@
             return () => document.removeEventListener('click', handleAnyClick);
         }, []);
 
-        useEffect(() => {
-            if (user && !user.isAnonymous) {
-                const t = setTimeout(() => requestNotificationPermission().catch(() => {}), 3000);
-                return () => clearTimeout(t);
-            }
-        }, [user]);
 
         useEffect(() => {
             profileConfigRef.current = profile?.config;
@@ -1942,8 +1943,11 @@
                 phoneSynced.current = true;
                 const sorted = [...COUNTRY_CODES].sort((a,b) => b.code.length - a.code.length);
                 const guessPrefix = sorted.find(c => profile.phone.startsWith(c.code))?.code || '54';
+                let localPart = profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone;
+                // Argentina: el teléfono se guarda como 549XXXXXX, quitamos el 9 extra para el display
+                if (guessPrefix === '54' && localPart.startsWith('9')) localPart = localPart.slice(1);
                 setProfPhonePrefix(guessPrefix);
-                setProfPhoneLocal(profile.phone.startsWith(guessPrefix) ? profile.phone.slice(guessPrefix.length) : profile.phone);
+                setProfPhoneLocal(localPart);
             }
         }, [profile]);
 
@@ -1959,7 +1963,19 @@
 
         if (!user || user.isAnonymous) return null; 
         if (loading) return <Spinner />;
-        if (!profile) { auth.signOut(); return <Spinner />; } 
+        if (!profile) { 
+            auth.signOut(); 
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-brand-50 p-6">
+                    <div className="bg-white rounded-4xl shadow-xl p-8 max-w-sm w-full text-center space-y-4 border border-neutral-100">
+                        <div className="text-5xl">⚠️</div>
+                        <h2 className="text-lg font-bold text-neutral-800">Cuenta no encontrada</h2>
+                        <p className="text-sm text-neutral-500">Tu cuenta de acceso existe pero el perfil fue eliminado. Contactá al administrador para regularizar tu situación.</p>
+                        <button onClick={() => auth.signOut()} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold text-sm active:scale-95 transition">Cerrar Sesión</button>
+                    </div>
+                </div>
+            );
+        }
 
         const daysLeft = getDaysLeft(profile.licenseExpiresAt);
         const isExpired = daysLeft <= 0;
@@ -1979,6 +1995,8 @@
                 const snap = await db.collection("appointments")
                     .where("profId", "==", user.uid)
                     .where("date", "<", minDate)
+                    .orderBy("date", "desc")
+                    .limit(200)
                     .get();
 
                 const oldList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -2080,7 +2098,7 @@
                 await db.collection("professionals").doc(user.uid).update({
                     name: f.get('name'), business: f.get('business'), service: f.get('service'),
                     price: f.get('price') || '',
-                    phone: f.get('phonePrefix') + local, waTemplate: f.get('waTemplate'),
+                    phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
                     address: addressInput.trim(),
                     addressLat: addressLat,
                     addressLng: addressLng,
@@ -2615,7 +2633,21 @@
                                     </div>
                                     <div className="mt-6">
                                         <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
-                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer" />
+                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
+                                                onChange={async (e) => {
+                                                    if (!e.target.checked) return;
+                                                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                                                    if (isIOS) {
+                                                        // Safari/iOS bloquea permisos si no nacen de un gesto: solo guardamos la preferencia
+                                                        return;
+                                                    }
+                                                    // Android / desktop: pedimos permiso nativo en respuesta al clic real del usuario
+                                                    const granted = await requestNotificationPermission().catch(() => false);
+                                                    if (!granted) {
+                                                        e.target.checked = false;
+                                                    }
+                                                }}
+                                            />
                                             <div>
                                                 <span className="block text-sm font-semibold text-neutral-800">Recibir notificaciones</span>
                                                 <span className="block text-xs text-neutral-500 mt-1">Te avisaremos con sonido y alerta en tu dispositivo cuando un cliente reserve o cancele un turno.</span>
@@ -2795,6 +2827,8 @@
                         const h = holdDoc.data();
                         const exp = h.expiresAt?.toDate ? h.expiresAt.toDate().getTime() : new Date(h.expiresAt).getTime();
                         if (exp > Date.now() && h.sessionId !== sessionId.current) throw new Error("Otro usuario está reservando este turno. Intentá en unos instantes.");
+                        // Hold expirado: borrarlo de la DB (limpieza de "basura fantasma")
+                        if (exp <= Date.now()) tx.delete(holdRef);
                     }
                     tx.set(holdRef, { 
                         profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt,
