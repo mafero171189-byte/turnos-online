@@ -2955,14 +2955,14 @@
                 const holdRef = db.collection("holds").doc(slotId);
 
                 // Fix 4: validar maxPerDay en servidor antes de escribir
+                // IMPORTANTE: los turnos se crean sin campo "cancelled", solo se agrega cuando se cancela (cancelled:true)
+                // Por eso no se puede filtrar por cancelled==false en Firestore — se trae todo y se filtra en JS
                 const maxPerDay = prof?.config?.maxPerDay || 0;
                 if (maxPerDay > 0) {
                     const daySnap = await db.collection("appointments")
                         .where("profId", "==", profId)
                         .where("date", "==", selectedDate)
-                        .where("cancelled", "==", false)
                         .get();
-                    // contar solo los no cancelados que existen como campo (algunos viejos no tienen el campo)
                     const activeCount = daySnap.docs.filter(d => !d.data().cancelled).length;
                     if (activeCount >= maxPerDay) {
                         setToast({ type:'error', message:'Ya se alcanzó el máximo de turnos para ese día.' });
