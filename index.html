@@ -3204,7 +3204,15 @@
                     setDialog({
                         type: 'alert',
                         title: '¡Reserva Registrada! 📝',
-                        message: `Para confirmar tu turno, transferí a este Alias/CBU:\n\n${prof.bankAlias || '(Solicitar Alias por WhatsApp)'}\n\nAl tocar "Entendido", se abrirá WhatsApp para que envíes el comprobante.`,
+                        message: (
+                            <span>
+                                Para confirmar tu turno, transferí a este Alias/CBU:
+                                <span className="block text-lg font-extrabold text-neutral-900 bg-neutral-100 py-2.5 px-3 rounded-xl border border-neutral-200 my-3 text-center shadow-sm tracking-wide">
+                                    {prof.bankAlias || '(Solicitar Alias por WhatsApp)'}
+                                </span>
+                                Al tocar "Entendido", se abrirá WhatsApp para que envíes el comprobante.
+                            </span>
+                        ),
                         onConfirm: () => {
                             window.location.href = `https://wa.me/${prof.phone}?text=${mensajeWS}`;
                             setSent({ date: selectedDate, time: selectedTime, client: clientName });
