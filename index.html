@@ -2303,15 +2303,14 @@
                     name: f.get('name'), business: f.get('business'), service: f.get('service'),
                     price: f.get('price') || '',
                     phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
-                    address: addressInput.trim(),
-                    addressLat: addressLat,
-                    addressLng: addressLng,
+                    address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
                     themeColor: f.get('themeColor'), logoBase64: logoPreview, slug: slug || '',
+                    // CAMPOS DE COBRO
+                    paymentMethod: f.get('paymentMethod') || 'mercadopago',
+                    bankAlias: f.get('bankAlias') || '',
                     config: {
-                        workingDays,
-                        startTime: f.get('startTime'), endTime: f.get('endTime'),
-                        duration: newDuration,
-                        maxPerDay: Number(f.get('maxPerDay')||0),
+                        workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'),
+                        duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0),
                         blockedDates: profile.config?.blockedDates || [],
                         notificationsEnabled: f.get('notificationsEnabled') === 'on'
                     }
@@ -2807,23 +2806,31 @@
                                         <input name="price" maxLength="30" defaultValue={profile.price || ''} placeholder="Ej: $15.000 o Consultar" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
                                     </div>
 
-                                    {/* --- SECCIÓN MERCADO PAGO --- */}
+                                    {/* --- CONFIGURACIÓN DE COBROS --- */}
                                     <div className="sm:col-span-2 mt-4 p-5 bg-blue-50 border border-blue-200 rounded-2xl">
-                                        <label className="block text-xs font-bold text-blue-800 uppercase mb-2">Cobros con Mercado Pago</label>
-                                        <p className="text-sm text-blue-700 mb-4">Vinculá tu cuenta para que los pacientes te paguen el turno automáticamente.</p>
-                                        
-                                        {profile.mp_access_token ? (
-                                            <div className="flex items-center gap-2 text-emerald-700 font-bold bg-emerald-100 px-4 py-3 rounded-xl border border-emerald-200">
-                                                ✅ Tu cuenta ya está vinculada y lista para cobrar.
+                                        <h3 className="text-sm font-bold text-blue-800 uppercase mb-4">¿Cómo querés cobrar las reservas?</h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <select name="paymentMethod" defaultValue={profile.paymentMethod || 'mercadopago'} className="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm outline-none focus:border-blue-500 font-medium">
+                                                    <option value="mercadopago">Automático con Mercado Pago</option>
+                                                    <option value="transfer">Manual por Transferencia (Alias/CBU)</option>
+                                                </select>
                                             </div>
-                                        ) : (
-                                            <a 
-    href={`https://auth.mercadopago.com.ar/authorization?client_id=6810217524631831&response_type=code&platform_id=mp&redirect_uri=https://turnofacil-backend-4r9k.onrender.com/vincular-mp&state=${user.uid}`}
-    className="inline-block bg-[#009ee3] text-white px-6 py-3 rounded-xl font-bold text-sm shadow-md hover:bg-[#0089c4] transition active:scale-95"
->
-    🤝 Conectar mi cuenta de Mercado Pago
-</a>
-                                        )}
+                                            {/* Info Mercado Pago */}
+                                            <div className="p-4 bg-white border border-blue-100 rounded-xl">
+                                                <p className="text-xs text-blue-700 mb-3"><b>Opción Mercado Pago:</b> Recordá configurar en tu cuenta de MP el cobro "En el momento" para evitar demoras de 15 días. MP cobra una comisión por venta.</p>
+                                                {profile.mp_access_token ? (
+                                                    <div className="text-emerald-700 font-bold bg-emerald-100 px-3 py-2 rounded-lg text-xs w-fit">✅ Cuenta vinculada.</div>
+                                                ) : (
+                                                    <a href={`https://auth.mercadopago.com.ar/authorization?client_id=6810217524631831&response_type=code&platform_id=mp&redirect_uri=https://turnofacil-backend-4r9k.onrender.com/vincular-mp&state=${user.uid}`} className="inline-block bg-[#009ee3] text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:bg-[#0089c4] transition">🤝 Vincular Mercado Pago</a>
+                                                )}
+                                            </div>
+                                            {/* Info Transferencia */}
+                                            <div className="p-4 bg-white border border-blue-100 rounded-xl">
+                                                <p className="text-xs text-blue-700 mb-2"><b>Opción Transferencia:</b> El cliente verá este Alias al reservar y deberá enviarte el comprobante por WhatsApp.</p>
+                                                <input name="bankAlias" defaultValue={profile.bankAlias || ''} placeholder="EJ: juan.perez.mp" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" />
+                                            </div>
+                                        </div>
                                     </div>
                                     {/* ----------------------------- */}
 
@@ -3113,42 +3120,101 @@
         };
 
         const handleBooking = async (e) => {
-            e.preventDefault();
-            if (!selectedTime) return;
+            e.preventDefault(); if (!selectedTime) return;
+            if (selectedDate === getTodayStr()) {
+                const nowMins = new Date().getHours()*60 + new Date().getMinutes();
+                const [sh, sm] = selectedTime.split(':').map(Number);
+                if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); await abandonHold(); setSelectedTime(''); return; }
+            }
+            if (holdSecondsLeft === null || holdSecondsLeft <= 0) { setToast({ type:'error', message:'Tu reserva expiró. Elegí un nuevo horario.' }); return; }
+            if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
+            const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
+            if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
             
             setBooking(true);
             
-            try {
-                // --- NUEVA LÓGICA DE PAGO ---
-                const montoLimpio = (prof.price || '').replace(/[^0-9]/g, ''); // Extrae solo números del precio
-                
-                const resPago = await fetch('https://turnofacil-backend-4r9k.onrender.com/crear-preferencia', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        profId: profId,
-                        monto: montoLimpio || 1000, // Si no hay precio, pone 1000 de prueba
-                        concepto: `Turno en ${prof.business}`,
-                        clientData: {
-                            clientName: e.target.clientName.value,
-                            date: selectedDate,
-                            time: selectedTime
-                        }
-                    })
-                });
-                const dataPago = await resPago.json();
-                if (dataPago.init_point) {
-                    // REDIRIGIR A MERCADO PAGO
-                    window.location.href = dataPago.init_point;
-                } else {
-                    throw new Error("No se pudo generar el link de pago.");
+            try { 
+                let currentUid = auth.currentUser?.uid;
+                if (!currentUid) {
+                    const cred = await auth.signInAnonymously();
+                    currentUid = cred.user.uid;
                 }
-                // -----------------------------
-            } catch (err) {
-                setToast({ type: 'error', message: err.message });
-            } finally {
-                setBooking(false);
-            }
+                const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
+                const holdRef = db.collection("holds").doc(slotId);
+                const slotRef = db.collection("appointments").doc(slotId);
+                
+                const maxPerDay = prof?.config?.maxPerDay || 0;
+                if (maxPerDay > 0) {
+                    const daySnap = await db.collection("appointments").where("profId", "==", profId).where("date", "==", selectedDate).get();
+                    const activeCount = daySnap.docs.filter(d => !d.data().cancelled).length;
+                    if (activeCount >= maxPerDay) { setToast({ type:'error', message:'Ya se alcanzó el máximo de turnos para ese día.' }); setBooking(false); return; }
+                }
+
+                const holdDoc = await holdRef.get();
+                if (!holdDoc.exists) throw new Error("Tu reserva ya no está activa. Elegí el horario nuevamente.");
+                if (holdDoc.data().sessionId !== sessionId.current) throw new Error("Tu reserva fue tomada por otra persona. Elegí otro horario.");
+                const holdExp = holdDoc.data().expiresAt?.toDate ? holdDoc.data().expiresAt.toDate().getTime() : new Date(holdDoc.data().expiresAt).getTime();
+                if (holdExp <= Date.now()) throw new Error("Tu reserva expiró. Elegí el horario nuevamente.");
+
+                const clientName = e.target.clientName.value.trim();
+                const fullPhone = buildPhone(phonePrefix, phoneLocal);
+                const notes = e.target.notes?.value || '';
+
+                // --- LÓGICA INTELIGENTE DE COBRO ---
+                const isMp = (!prof.paymentMethod || prof.paymentMethod === 'mercadopago');
+
+                if (isMp) {
+                    const res = await fetch('https://turnofacil-backend-4r9k.onrender.com/crear-preferencia', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            profId,
+                            monto: (prof.price || '1000').replace(/[^0-9]/g, ''),
+                            concepto: `Reserva en ${prof.business}`,
+                            clientData: { clientName, phone: fullPhone, dni: dniValue, date: selectedDate, time: selectedTime }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.init_point) {
+                        window.location.href = data.init_point; 
+                        return; 
+                    } else {
+                        throw new Error("No se pudo conectar con Mercado Pago.");
+                    }
+                } else {
+                    // OPCIÓN TRANSFERENCIA
+                    const aptData = {
+                        profId, date: selectedDate, time: selectedTime,
+                        client: clientName, dni: dniValue, phone: fullPhone, notes: notes,
+                        clientUid: currentUid, status: 'pendiente_pago', method: 'transferencia',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+
+                    await db.runTransaction(async (tx) => {
+                        const slotDocTx = await tx.get(slotRef);
+                        if (slotDocTx.exists && !slotDocTx.data().cancelled) throw new Error("Ese horario ya fue reservado.");
+                        tx.set(slotRef, aptData);
+                        tx.delete(holdRef); 
+                    });
+
+                    clearHoldState(); currentHoldRef.current = null; remainingSecsRef.current = 120; 
+
+                    const mensajeWS = encodeURIComponent(`Hola ${prof.business}! 👋\n\nAcabo de reservar un turno:\n📅 Fecha: ${formatDate(selectedDate)}\n⏰ Hora: ${selectedTime} hs\n👤 Nombre: ${clientName}\n\nAdjunto aquí el comprobante de transferencia por la reserva. ¡Muchas gracias!`);
+
+                    setDialog({
+                        type: 'alert',
+                        title: '¡Reserva Registrada! 📝',
+                        message: `Para confirmar tu turno, transferí a este Alias/CBU:\n\n${prof.bankAlias || '(Solicitar Alias por WhatsApp)'}\n\nAl tocar "Entendido", se abrirá WhatsApp para que envíes el comprobante.`,
+                        onConfirm: () => {
+                            window.location.href = `https://wa.me/${prof.phone}?text=${mensajeWS}`;
+                            setSent({ date: selectedDate, time: selectedTime, client: clientName });
+                        }
+                    });
+                }
+            } catch (err) { 
+                console.error(err); 
+                setToast({ type:'error', message: err.message }); 
+            } finally { setBooking(false); }
         };
 
         if (profExpired) return (
@@ -3184,25 +3250,33 @@
 
             // NUEVO: Generar mensaje y link de WhatsApp para el profesional
             const waMessage = encodeURIComponent(`¡Hola! Acabo de reservar un turno.\n\n👤 Nombre: ${sent.client}\n📅 Fecha: ${formatDate(sent.date)}\n⏰ Hora: ${sent.time} hs\n\n¡Gracias!`);
-            const waLink = `https://wa.me/${prof?.phone}?text=${waMessage}`;
+            const waLink = sent.method === 'transfer' ? sent.waLink : `https://wa.me/${prof?.phone}?text=${waMessage}`;
 
             return (
                 <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
                     <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
                         <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">✓</div>
-                        <h2 className="text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
+                        <h2 className="text-2xl font-bold tracking-tight">{sent.method === 'transfer' ? '¡Reserva Registrada!' : '¡Turno Confirmado!'}</h2>
                         <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business}</p>
-                        <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-6">
+                        <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-4">
                             <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
                             <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
                             {prof?.address && (
                                 <p className="text-neutral-500 text-xs mt-2">📍 {prof.address}</p>
                             )}
                         </div>
+
+                        {sent.method === 'transfer' && sent.alias && (
+                            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 text-left">
+                                <p className="text-xs text-blue-600 font-bold uppercase mb-1">Para confirmar tu turno, transferí a:</p>
+                                <p className="text-lg font-extrabold text-blue-800 tracking-wide">{sent.alias}</p>
+                                <p className="text-[10px] text-blue-500 mt-1">Luego enviá el comprobante por WhatsApp.</p>
+                            </div>
+                        )}
                         
-                        {/* NUEVO: Botón de WhatsApp destacado */}
+                        {/* Botón de WhatsApp destacado */}
                         <a href={waLink} target="_blank" rel="noopener noreferrer" className="w-full bg-[#25D366] text-white py-3.5 rounded-2xl text-sm font-bold mb-3 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-[#20bd5a] shadow-md">
-                            <IconWhatsapp /> Avisar al profesional
+                            <IconWhatsapp /> {sent.method === 'transfer' ? 'Enviar comprobante por WhatsApp' : 'Avisar al profesional'}
                         </a>
 
                         {prof?.address && (
