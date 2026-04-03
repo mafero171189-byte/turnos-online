@@ -3113,88 +3113,42 @@
         };
 
         const handleBooking = async (e) => {
-            e.preventDefault(); if (!selectedTime) return;
-            if (selectedDate === getTodayStr()) {
-                const nowMins = new Date().getHours()*60 + new Date().getMinutes();
-                const [sh, sm] = selectedTime.split(':').map(Number);
-                if (sh*60+sm <= nowMins) { setToast({ type:'error', message:'Ese horario ya pasó. Por favor elegí otro.' }); await abandonHold(); setSelectedTime(''); return; }
-            }
-            if (holdSecondsLeft === null || holdSecondsLeft <= 0) { setToast({ type:'error', message:'Tu reserva expiró. Elegí un nuevo horario.' }); return; }
-            if (phoneLocal.replace(/\D/g,'').length < 8) { setToast({ type:'error', message:'Ingresá un número de WhatsApp válido.' }); return; }
-            const dniValue = (e.target.dni?.value || '').replace(/\D/g,'');
-            if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
+            e.preventDefault();
+            if (!selectedTime) return;
+            
             setBooking(true);
-            try { 
-                let currentUid = auth.currentUser?.uid;
-                if (!currentUid) {
-                    const cred = await auth.signInAnonymously();
-                    currentUid = cred.user.uid;
-                }
-                const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
-                const slotRef = db.collection("appointments").doc(slotId);
-                const holdRef = db.collection("holds").doc(slotId);
-
-                // Fix 4: validar maxPerDay en servidor antes de escribir
-                // IMPORTANTE: los turnos se crean sin campo "cancelled", solo se agrega cuando se cancela (cancelled:true)
-                // Por eso no se puede filtrar por cancelled==false en Firestore — se trae todo y se filtra en JS
-                const maxPerDay = prof?.config?.maxPerDay || 0;
-                if (maxPerDay > 0) {
-                    const daySnap = await db.collection("appointments")
-                        .where("profId", "==", profId)
-                        .where("date", "==", selectedDate)
-                        .get();
-                    const activeCount = daySnap.docs.filter(d => !d.data().cancelled).length;
-                    if (activeCount >= maxPerDay) {
-                        setToast({ type:'error', message:'Ya se alcanzó el máximo de turnos para ese día.' });
-                        setBooking(false); return;
-                    }
-                }
-
-                const aptData = {
-                    profId, date: selectedDate, time: selectedTime,
-                    client: e.target.clientName.value.trim(),
-                    dni: dniValue,
-                    phone: buildPhone(phonePrefix, phoneLocal),
-                    notes: e.target.notes?.value || '',
-                    clientUid: currentUid,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
+            
+            try {
+                // --- NUEVA LÓGICA DE PAGO ---
+                const montoLimpio = (prof.price || '').replace(/[^0-9]/g, ''); // Extrae solo números del precio
                 
-                await db.runTransaction(async (tx) => {
-                    const [slotDoc, holdDoc] = await Promise.all([tx.get(slotRef), tx.get(holdRef)]);
-
-                    // Verificar que el turno no fue reservado por otra persona
-                    if (slotDoc.exists && !slotDoc.data().cancelled) throw new Error("Ese horario ya fue reservado por otra persona.");
-
-                    // Verificar que el hold existe, pertenece a esta sesión y no expiró
-                    if (!holdDoc.exists) throw new Error("Tu reserva ya no está activa. Elegí el horario nuevamente.");
-                    const holdData = holdDoc.data();
-                    if (holdData.sessionId !== sessionId.current) throw new Error("Tu reserva fue tomada por otra persona. Elegí otro horario.");
-                    const holdExp = holdData.expiresAt?.toDate ? holdData.expiresAt.toDate().getTime() : new Date(holdData.expiresAt).getTime();
-                    if (holdExp <= Date.now()) throw new Error("Tu reserva expiró. Elegí el horario nuevamente.");
-                    
-                    const now = new Date();
-                    const todayStr = getTodayStr();
-                    if (selectedDate < todayStr) throw new Error("La fecha seleccionada ya pasó.");
-                    if (selectedDate === todayStr) {
-                        const nowMins = now.getHours() * 60 + now.getMinutes();
-                        const [sh,sm] = selectedTime.split(':').map(Number);
-                        if (sh * 60 + sm <= nowMins) throw new Error("El horario seleccionado acaba de expirar. Elegí otro.");
-                    }
-
-                    tx.set(slotRef, aptData);
-                    tx.delete(holdRef); 
+                const resPago = await fetch('https://turnofacil-backend-4r9k.onrender.com/crear-preferencia', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profId: profId,
+                        monto: montoLimpio || 1000, // Si no hay precio, pone 1000 de prueba
+                        concepto: `Turno en ${prof.business}`,
+                        clientData: {
+                            clientName: e.target.clientName.value,
+                            date: selectedDate,
+                            time: selectedTime
+                        }
+                    })
                 });
-                
-                clearHoldState();
-                currentHoldRef.current = null;
-                remainingSecsRef.current = 120; 
-                setSent({ date: selectedDate, time: selectedTime, client: e.target.clientName.value.trim() });
-            } catch (err) { 
-                console.error(err); 
-                const errorMsg = err.code === 'permission-denied' ? 'Error de permisos de Firebase.' : err.message;
-                setToast({ type:'error', message: errorMsg }); 
-            } finally { setBooking(false); }
+                const dataPago = await resPago.json();
+                if (dataPago.init_point) {
+                    // REDIRIGIR A MERCADO PAGO
+                    window.location.href = dataPago.init_point;
+                } else {
+                    throw new Error("No se pudo generar el link de pago.");
+                }
+                // -----------------------------
+            } catch (err) {
+                setToast({ type: 'error', message: err.message });
+            } finally {
+                setBooking(false);
+            }
         };
 
         if (profExpired) return (
