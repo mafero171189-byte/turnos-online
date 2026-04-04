@@ -2237,14 +2237,14 @@
         if (!user || user.isAnonymous) return null; 
         if (loading) return <Spinner />;
         if (!profile) { 
-            auth.signOut(); 
+            // Eliminamos el cierre automático para evitar el parpadeo
             return (
-                <div className="min-h-screen flex items-center justify-center bg-brand-50 p-6">
+                <div className="min-h-screen flex items-center justify-center bg-brand-50 p-6 fade-in">
                     <div className="bg-white rounded-4xl shadow-xl p-8 max-w-sm w-full text-center space-y-4 border border-neutral-100">
                         <div className="text-5xl">⚠️</div>
-                        <h2 className="text-lg font-bold text-neutral-800">Cuenta no encontrada</h2>
-                        <p className="text-sm text-neutral-500">Tu cuenta de acceso existe pero el perfil fue eliminado. Contactá al administrador para regularizar tu situación.</p>
-                        <button onClick={() => auth.signOut()} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold text-sm active:scale-95 transition">Cerrar Sesión</button>
+                        <h2 className="text-lg font-bold text-neutral-800">Sesión inválida</h2>
+                        <p className="text-sm text-neutral-500">Tu cuenta quedó guardada en el navegador, pero los datos del negocio fueron eliminados de la base de datos.</p>
+                        <button onClick={() => auth.signOut()} className="w-full bg-brand-600 text-white py-3 rounded-2xl font-semibold text-sm active:scale-95 transition">Cerrar Sesión y volver</button>
                     </div>
                 </div>
             );
@@ -3559,8 +3559,20 @@
                             <input name="dni" maxLength="15" placeholder="DNI (sin puntos)" inputMode="numeric" pattern="[0-9]*" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" required />
                             <PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={phonePrefix} onPrefixChange={setPhonePrefix} value={phoneLocal} onChange={e => setPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Sin 0 ni 15" required />
                             <input name="notes" maxLength="200" placeholder="Alguna nota o comentario (opcional)" className="w-full p-4 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none" />
-                            <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg text-white ${booking ? 'opacity-70' : 'active:scale-[0.98]'}`}>
-                                {booking ? 'Reservando...' : 'Confirmar Reserva'}
+                            <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg text-white flex items-center justify-center gap-3 ${booking ? 'opacity-80 cursor-wait' : 'active:scale-[0.98]'}`}>
+                                {booking ? (
+                                    <>
+                                        <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        {(!prof?.paymentMethod || prof.paymentMethod === 'mercadopago') 
+                                            ? 'Generando link seguro. Espere por favor...' 
+                                            : 'Procesando reserva...'}
+                                    </>
+                                ) : (
+                                    'Confirmar Reserva'
+                                )}
                             </button>
                         </div>
                     </form>
