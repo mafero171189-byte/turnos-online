@@ -2330,6 +2330,16 @@
             if (workingDays.length === 0) { setToast({ type:'error', message:'Seleccioná al menos un día de trabajo.' }); return; }
             const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
             if (local.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
+
+            // VALIDACIÓN MERCADO PAGO: Debe tener precio numérico
+            const paymentMethod = f.get('paymentMethod');
+            const priceVal = f.get('price') || '';
+            const numericPrice = priceVal.replace(/\D/g, '');
+            if (paymentMethod === 'mercadopago' && (!numericPrice || numericPrice === '0')) {
+                setToast({ type:'error', message:'Para cobrar con Mercado Pago, debés ingresar un Precio numérico (ej: 5000).' });
+                setSaving(false);
+                return;
+            }
             
             let slug = f.get('slug').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
             
@@ -3255,12 +3265,17 @@
                 const isMp = (!prof.paymentMethod || prof.paymentMethod === 'mercadopago');
 
                 if (isMp) {
+                    const montoNumerico = (prof.price || '1000').replace(/[^0-9]/g, '');
+                    if (!montoNumerico || montoNumerico === '0') {
+                        throw new Error("El negocio no configuró un precio válido para cobrar con Mercado Pago.");
+                    }
+
                     const res = await fetch('https://turnofacil-backend-4r9k.onrender.com/crear-preferencia', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             profId,
-                            monto: (prof.price || '1000').replace(/[^0-9]/g, ''),
+                            monto: montoNumerico,
                             concepto: `Reserva en ${prof.business}`,
                             clientData: { clientName, phone: fullPhone, dni: dniValue, date: selectedDate, time: selectedTime }
                         })
@@ -3296,13 +3311,29 @@
                         type: 'alert',
                         title: '¡Reserva Registrada! 📝',
                         message: (
-                            <span>
-                                Para confirmar tu turno, transferí a este Alias/CBU:
-                                <span className="block text-lg font-extrabold text-neutral-900 bg-neutral-100 py-2.5 px-3 rounded-xl border border-neutral-200 my-3 text-center shadow-sm tracking-wide">
-                                    {prof.bankAlias || '(Solicitar Alias por WhatsApp)'}
-                                </span>
-                                Al tocar "Entendido", se abrirá WhatsApp para que envíes el comprobante.
-                            </span>
+                            <div className="text-center">
+                                <p className="mb-2 text-sm text-neutral-600">Para confirmar tu turno, transferí a este Alias/CBU:</p>
+                                <div className="mb-4">
+                                    <div className="text-lg font-extrabold text-brand-700 bg-brand-50 py-3 px-4 rounded-xl border-2 border-brand-200 tracking-wide break-all">
+                                        {prof.bankAlias || '(Solicitar por WhatsApp)'}
+                                    </div>
+                                    {prof.bankAlias && (
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                navigator.clipboard.writeText(prof.bankAlias)
+                                                    .then(() => setToast({type:'success', message:'¡Alias copiado al portapapeles!'}))
+                                                    .catch(() => setToast({type:'error', message:'No se pudo copiar'}));
+                                            }}
+                                            className="mt-2 text-xs font-bold text-brand-600 hover:text-brand-800 transition"
+                                        >
+                                            📋 Tocar para copiar Alias
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-neutral-500">Al tocar "Entendido", abriremos WhatsApp para que envíes el comprobante.</p>
+                            </div>
                         ),
                         onConfirm: () => {
                             window.location.href = `https://wa.me/${prof.phone}?text=${mensajeWS}`;
