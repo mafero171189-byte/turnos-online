@@ -2425,17 +2425,13 @@
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-
-            // Actualizar UI al instante sin esperar a Firebase
             setProfile(prev => ({ ...prev, ...newData }));
             setSaving(false);
             setToast({ type:'success', message:'¡Cambios guardados! Ya se ven en la página de turnos.' });
-
-            // Guardar en Firebase en segundo plano (no bloquea la UI)
             db.collection("professionals").doc(user.uid).update(newData)
                 .catch(err => {
-                    console.error('Error sync Firebase:', err.code, err.message);
-                    setToast({ type:'error', message:'No se pudo sincronizar con el servidor. Revisá tu conexión.' });
+                    console.error('Firebase sync error:', err.code, err.message);
+                    setToast({ type:'error', message:'Error al sincronizar: ' + (err.code || err.message) });
                 });
         };
 
