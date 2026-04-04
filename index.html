@@ -2181,7 +2181,13 @@
                         prevAptsRef.current = newMap;
                         initialized.current = true;
                     },
-                    (err) => { console.warn('onSnapshot apts error:', err); }
+                    (err) => {
+                        console.warn('onSnapshot apts error:', err);
+                        if (active) {
+                            try { if (unsubApts) unsubApts(); } catch(e) {}
+                            setTimeout(() => { if (active) subscribeApts(); }, 5000);
+                        }
+                    }
                 );
             };
             subscribeApts();
@@ -2422,19 +2428,28 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            // Solo subir el logo si cambió — es muy pesado y enlentece Firebase
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
             try {
-                // Guardar en Firestore PRIMERO; el onSnapshot se encarga de actualizar el state
-                await db.collection("professionals").doc(user.uid).update(newData);
+                // Timeout de 12 s: si Firebase no responde, no se queda colgado para siempre
+                const timeout = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('timeout')), 12000)
+                );
+                await Promise.race([
+                    db.collection("professionals").doc(user.uid).update(newData),
+                    timeout
+                ]);
                 setToast({ type:'success', message:'¡Cambios guardados! Ya se ven en la página de turnos.' });
             } catch(err) {
-                console.error('Error al guardar perfil:', err);
-                setToast({ type:'error', message:'Error al guardar. Revisá tu conexión e intentá de nuevo.' });
+                if (err.message === 'timeout') {
+                    setToast({ type:'error', message:'La conexión tardó demasiado. Verificá tu internet e intentá de nuevo.' });
+                } else {
+                    setToast({ type:'error', message:'Error al guardar. Revisá tu conexión e intentá de nuevo.' });
+                }
+                console.error('doSaveProfile error:', err);
             } finally {
-                // setSaving(false) SIEMPRE va en finally, nunca antes del await
+                // setSaving(false) SIEMPRE en finally — nunca antes del await
                 setSaving(false);
             }
         };
@@ -2885,14 +2900,14 @@
                     <div className="fade-in space-y-6">
                         <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
                             <h2 className="text-xl font-semibold mb-6 flex items-center gap-2"><IconSettings /> Personalización y Perfil</h2>
-                            <form onSubmit={updateProfile} className="space-y-6" key={JSON.stringify({
-                                n: profile.name, b: profile.business, s: profile.service,
-                                ph: profile.phone, sl: profile.slug, tc: profile.themeColor,
-                                pm: profile.paymentMethod, ba: profile.bankAlias, pr: profile.price,
-                                st: profile.config?.startTime, et: profile.config?.endTime,
-                                du: profile.config?.duration, wd: profile.config?.workingDays,
-                                mp: profile.config?.maxPerDay, wa: profile.waTemplate
-                            })}>
+                            <form onSubmit={updateProfile} className="space-y-6" key={[
+                                profile.name, profile.business, profile.service, profile.phone,
+                                profile.slug, profile.themeColor, profile.paymentMethod,
+                                profile.bankAlias, profile.price, profile.waTemplate,
+                                profile.config?.startTime, profile.config?.endTime,
+                                profile.config?.duration, profile.config?.maxPerDay,
+                                (profile.config?.workingDays||[]).join(',')
+                            ].join('|')}>
                                 <div className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
                                     <div>
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Color de tu marca</label>
