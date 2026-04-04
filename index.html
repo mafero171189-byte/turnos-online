@@ -2181,7 +2181,14 @@
                         prevAptsRef.current = newMap;
                         initialized.current = true;
                     },
-                    (err) => { console.warn('onSnapshot apts error:', err); }
+                    (err) => {
+                        console.warn('onSnapshot apts error:', err);
+                        // Si el listener muere (p.ej. red cortada), reintentamos en 5 s
+                        if (active) {
+                            try { if (unsubApts) unsubApts(); } catch(e) {}
+                            setTimeout(() => { if (active) subscribeApts(); }, 5000);
+                        }
+                    }
                 );
             };
             subscribeApts();
@@ -3119,6 +3126,12 @@
             };
         }, []);
 
+        // ── WARM-UP del backend (evita que Render esté dormido cuando llegue el webhook de MP) ──
+        useEffect(() => {
+            fetch('https://turnofacil-backend-4r9k.onrender.com/health', { method: 'GET' })
+                .catch(() => {}); // silencioso: solo importa despertar al servidor
+        }, []);
+
         useEffect(() => {
             const prevTitle = document.title;
             const handleSnap = (d) => {
@@ -3157,24 +3170,38 @@
                 setShowWaitlistForm(false);
                 setLoadingSlots(true);
                 const nowMs = Date.now();
-                Promise.all([
-                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
-                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
-                ]).then(([aptsSnap, holdsSnap]) => {
-                    if (!active) return;
-                    const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
-                    const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
-                        const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
-                        return exp > nowMs && d.sessionId !== sessionId.current;
-                    }).map(d => d.time);
-                    setBookedTimes([...new Set([...fromApts, ...fromHolds])]);
-                    setLoadingSlots(false);
-                }).catch(() => {
-                    if (!active) return;
-                    setBookedTimes([]); setLoadingSlots(false);
-                    setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' });
-                });
-                return () => { active = false; };
+
+                const loadSlots = () => {
+                    setLoadingSlots(true);
+                    Promise.all([
+                        db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' }),
+                        db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' })
+                    ]).then(([aptsSnap, holdsSnap]) => {
+                        if (!active) return;
+                        const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
+                        const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
+                            const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
+                            return exp > Date.now() && d.sessionId !== sessionId.current;
+                        }).map(d => d.time);
+                        setBookedTimes([...new Set([...fromApts, ...fromHolds])]);
+                        setLoadingSlots(false);
+                    }).catch(() => {
+                        if (!active) return;
+                        setBookedTimes([]); setLoadingSlots(false);
+                        setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' });
+                    });
+                };
+
+                loadSlots();
+
+                // Recargar horarios desde el servidor si el usuario vuelve a la pestaña
+                // (cubre el caso de volver desde Mercado Pago: el turno ya existe en Firestore)
+                const handleVisibilitySlots = () => {
+                    if (document.visibilityState === 'visible' && active) loadSlots();
+                };
+                document.addEventListener('visibilitychange', handleVisibilitySlots);
+
+                return () => { active = false; document.removeEventListener('visibilitychange', handleVisibilitySlots); };
             }
         }, [selectedDate, profId]);
 
