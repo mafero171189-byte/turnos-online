@@ -2880,9 +2880,27 @@
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Servicio</label><input name="service" maxLength="50" defaultValue={profile.service} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" /></div>
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="phonePrefix" nameLocal="phoneLocal" prefix={profPhonePrefix} onPrefixChange={setProfPhonePrefix} value={profPhoneLocal} onChange={e => setProfPhoneLocal(e.target.value)} required /></div>
                                     
-                                    <div className="sm:col-span-2">
+                                                                        <div className="sm:col-span-2">
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Precio del servicio <span className="normal-case font-normal text-neutral-400">(Opcional)</span></label>
-                                        <input name="price" maxLength="30" defaultValue={profile.price || ''} placeholder="Ej: $15.000 o Consultar" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
+                                        <input 
+                                            name="price" 
+                                            maxLength="30" 
+                                            defaultValue={profile.price || ''} 
+                                            onChange={(e) => {
+                                                // Si empieza a escribir letras (ej: "Consultar"), lo dejamos tal cual
+                                                if (/^[a-zA-Z]/.test(e.target.value)) return;
+                                                
+                                                // Si ingresa números, agregamos el signo pesos y el punto de mil automáticamente
+                                                let nums = e.target.value.replace(/\D/g, '');
+                                                if (nums) {
+                                                    e.target.value = '$ ' + Number(nums).toLocaleString('es-AR');
+                                                } else {
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                            placeholder="Ej: $ 15.000 o Consultar" 
+                                            className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600 font-medium" 
+                                        />
                                     </div>
 
                                     {/* --- CONFIGURACIÓN DE COBROS --- */}
@@ -2897,7 +2915,7 @@
                                             </div>
                                             {/* Info Mercado Pago */}
                                             <div className="p-4 bg-white border border-blue-100 rounded-xl">
-                                                <p className="text-xs text-blue-700 mb-3"><b>Opción Mercado Pago:</b> Recordá configurar en tu cuenta de MP el cobro "En el momento" para evitar demoras de 15 días. MP cobra una comisión por venta.</p>
+                                                <p className="text-xs text-blue-700 mb-3"><b>Opción Mercado Pago:</b> Recordá configurar en tu cuenta de Mercado Pago el cobro "En el momento" para evitar demoras de 15 días. Mercado Pago cobra una comisión por venta.(Las comisiones de Mercado Pago son ajenas a nuestro sistema)</p>
                                                 {profile.mp_access_token ? (
                                                     <div className="text-emerald-700 font-bold bg-emerald-100 px-3 py-2 rounded-lg text-xs w-fit">✅ Cuenta vinculada.</div>
                                                 ) : (
@@ -2906,7 +2924,7 @@
                                             </div>
                                             {/* Info Transferencia */}
                                             <div className="p-4 bg-white border border-blue-100 rounded-xl">
-                                                <p className="text-xs text-blue-700 mb-2"><b>Opción Transferencia:</b> El cliente verá este Alias al reservar y deberá enviarte el comprobante por WhatsApp.</p>
+                                                <p className="text-xs text-blue-700 mb-2"><b>Opción Transferencia:</b> La más usada. El cliente verá este Alias al reservar y deberá enviarte el comprobante por WhatsApp. (Sin Comisión por parte de Mercado Pago)</p>
                                                 <input name="bankAlias" defaultValue={profile.bankAlias || ''} placeholder="EJ: juan.perez.mp" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" />
                                             </div>
                                         </div>
