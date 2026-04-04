@@ -3351,6 +3351,18 @@
                         tx.delete(holdRef); 
                     });
 
+                    // --- DISPARAR NOTIFICACIÓN PUSH AL PROFESIONAL ---
+                    fetch('https://turnofacil-backend-4r9k.onrender.com/enviar-notificacion', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            profId: profId,
+                            titulo: '¡Nuevo turno reservado! 📅',
+                            mensaje: `${clientName} agendó para el ${formatDate(selectedDate)} a las ${selectedTime}hs.`
+                        })
+                    }).catch(err => console.error("Error al disparar push:", err));
+                    // --------------------------------------------------
+
                     clearHoldState(); currentHoldRef.current = null; remainingSecsRef.current = 120; 
 
                     const mensajeWS = encodeURIComponent(`Hola ${prof.business}! 👋\n\nAcabo de reservar un turno:\n📅 Fecha: ${formatDate(selectedDate)}\n⏰ Hora: ${selectedTime} hs\n👤 Nombre: ${clientName}\n\nAdjunto aquí el comprobante de transferencia por la reserva. ¡Muchas gracias!`);
