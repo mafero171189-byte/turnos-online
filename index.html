@@ -2422,17 +2422,16 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            // Solo incluir el logo si cambió — es muy pesado y enlentece Firebase
+            // Solo subir el logo si cambió — es muy pesado y enlentece Firebase
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-            // Actualizar la UI del admin instantáneamente sin esperar a Firebase
+            // Actualizar la UI del admin INSTANTÁNEAMENTE sin esperar a Firebase
             setProfile(prev => ({ ...prev, ...newData }));
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
             setSaving(false);
             try {
-                // Esperar confirmación de Firebase para que la página de turnos reciba el dato actualizado
                 await db.collection("professionals").doc(user.uid).update(newData);
-                setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
+                setToast({ type:'success', message:'¡Perfil guardado! Los cambios ya se ven en la página de turnos.'});
             } catch(err) {
                 setToast({ type:'error', message:'Error al guardar. Revisá tu conexión.' });
             }
@@ -3122,7 +3121,7 @@
 
         useEffect(() => {
             const prevTitle = document.title;
-            const unsub = db.collection("professionals").doc(profId).onSnapshot(d => {
+            const handleSnap = (d) => {
                 if (d.exists) {
                     const data = d.data();
                     const daysLeft = getDaysLeft(data.licenseExpiresAt);
@@ -3134,8 +3133,19 @@
                 } else {
                     setProfExpired(true);
                 }
-            }, () => setProfExpired(true));
-            return () => { unsub(); document.title = prevTitle; };
+            };
+            const unsub = db.collection("professionals").doc(profId).onSnapshot(handleSnap, () => setProfExpired(true));
+            // Forzar re-fetch desde el servidor cuando el usuario vuelve a la página
+            // (el onSnapshot puede quedar desconectado en mobile al ir a segundo plano)
+            const handleVisibility = () => {
+                if (document.visibilityState === 'visible') {
+                    db.collection("professionals").doc(profId).get({ source: 'server' })
+                        .then(handleSnap)
+                        .catch(() => {});
+                }
+            };
+            document.addEventListener('visibilitychange', handleVisibility);
+            return () => { unsub(); document.title = prevTitle; document.removeEventListener('visibilitychange', handleVisibility); };
         }, [profId]);
 
         useEffect(() => {
