@@ -2405,8 +2405,7 @@
             doSaveProfile(f, workingDays, local, newDuration, slug);
         };
 
-        const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
-            setSaving(true);
+        const doSaveProfile = (f, workingDays, local, newDuration, slug) => {
             const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
@@ -2422,16 +2421,15 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            // Actualizar estado local INSTANTÁNEAMENTE para que la UI refleje el cambio sin esperar a Firebase
+            // Actualizar UI y liberar botón INSTANTÁNEAMENTE
             setProfile(prev => ({ ...prev, ...newData }));
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-            try {
-                await db.collection("professionals").doc(user.uid).update(newData);
-                setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
-            } catch(err) {
-                setToast({ type:'error', message:'Error al guardar. Intentá de nuevo.' });
-            } finally { setSaving(false); }
+            setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
+            setSaving(false);
+            // Firebase guarda en segundo plano
+            db.collection("professionals").doc(user.uid).update(newData)
+                .catch(() => setToast({ type:'error', message:'Error al guardar. Revisá tu conexión.' }));
         };
 
         const getWaLink = (apt) => {
