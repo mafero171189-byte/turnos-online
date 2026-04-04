@@ -3469,11 +3469,13 @@
                                     ) : (
                                         <div className="bg-white p-4 rounded-xl shadow-sm text-left border border-neutral-100 mt-2 fade-in">
                                             <p className="text-xs text-neutral-500 font-semibold mb-3">Te avisaremos si alguien cancela y se libera un turno.</p>
-                                            <input id="waitlistClient" name="waitlistClient" maxLength="50" placeholder="Nombre y apellido" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl outline-none text-sm mb-3" required form="waitlistForm" />
-                                            <PhoneInput namePrefix="waitlistPhonePrefix" nameLocal="waitlistPhoneLocal" prefix={waitlistPhonePrefix} onPrefixChange={setWaitlistPhonePrefix} value={waitlistPhoneLocal} onChange={e => setWaitlistPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp" required form="waitlistForm" />
+                                            <input id="waitlistClient" name="waitlistClient" maxLength="50" placeholder="Nombre y apellido" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl outline-none text-sm mb-3" required />
+                                            <PhoneInput namePrefix="waitlistPhonePrefix" nameLocal="waitlistPhoneLocal" prefix={waitlistPhonePrefix} onPrefixChange={setWaitlistPhonePrefix} value={waitlistPhoneLocal} onChange={e => setWaitlistPhoneLocal(e.target.value.replace(/\D/g,''))} placeholder="Tu WhatsApp" required />
                                             <div className="flex gap-2 mt-4">
-                                                <button type="button" onClick={() => setShowWaitlistForm(false)} className="flex-1 py-2 text-neutral-500 font-medium text-sm">Cancelar</button>
-                                                <button type="button" onClick={handleWaitlist} disabled={booking} className="flex-1 custom-bg text-white py-2 rounded-xl font-bold text-sm" form="waitlistForm">Anotarme</button>
+                                                <button type="button" onClick={() => setShowWaitlistForm(false)} className="flex-1 py-2 text-neutral-500 font-medium text-sm transition hover:bg-neutral-50 rounded-xl">Cancelar</button>
+                                                <button type="button" onClick={handleWaitlist} disabled={booking} className={`flex-1 custom-bg text-white py-2 rounded-xl font-bold text-sm transition ${booking ? 'opacity-70' : 'active:scale-95'}`}>
+                                                    {booking ? '...' : 'Anotarme'}
+                                                </button>
                                             </div>
                                         </div>
                                     )}
