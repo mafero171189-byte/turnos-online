@@ -2027,7 +2027,7 @@
                     <a href={`https://wa.me/${a.phone}?text=${encodeURIComponent(buildWAMsg(profile.waTemplate, a, profile.business))}`} target="_blank" className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition">
                         <IconWhatsapp />
                     </a>
-                    <button type="button" onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: () => { db.collection("appointments").doc(a.id).delete().then(() => setToast({type:'success', message:'Turno eliminado'})).catch(err => setToast({type:'error', message:'No se pudo eliminar el turno.'})); } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
+                    <button type="button" onClick={() => setDialog({ type:'confirm', title:'Eliminar turno', message:`¿Eliminás el turno de ${a.client} del ${formatDate(a.date)}? Esta acción no se puede deshacer.`, onConfirm: async () => { try { await db.collection("appointments").doc(a.id).delete(); setToast({type:'success', message:'Turno eliminado'}); } catch(err) { setToast({type:'error', message:'No se pudo eliminar el turno.'}); } } })} className="text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 active:scale-95 transition">
                         <IconTrash />
                     </button>
                 </div>
@@ -2405,31 +2405,30 @@
             doSaveProfile(f, workingDays, local, newDuration, slug);
         };
 
-        const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
+        const doSaveProfile = (f, workingDays, local, newDuration, slug) => {
             setSaving(true);
-            try {
-                await db.collection("professionals").doc(user.uid).update({
-                    name: f.get('name'), business: f.get('business'), service: f.get('service'),
-                    price: f.get('price') || '',
-                    phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
-                    address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
-                    themeColor: f.get('themeColor'), logoBase64: logoPreview, slug: slug || '',
-                    // CAMPOS DE COBRO
-                    paymentMethod: f.get('paymentMethod') || 'mercadopago',
-                    bankAlias: f.get('bankAlias') || '',
-                    config: {
-                        workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'),
-                        duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0),
-                        blockedDates: profile.config?.blockedDates || [],
-                        notificationsEnabled: f.get('notificationsEnabled') === 'on'
-                    }
-                });
-                const savedColor = f.get('themeColor');
-                if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-                setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
-            } catch(err) {
+            const savedColor = f.get('themeColor');
+            db.collection("professionals").doc(user.uid).update({
+                name: f.get('name'), business: f.get('business'), service: f.get('service'),
+                price: f.get('price') || '',
+                phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
+                address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
+                themeColor: savedColor, logoBase64: logoPreview, slug: slug || '',
+                // CAMPOS DE COBRO
+                paymentMethod: f.get('paymentMethod') || 'mercadopago',
+                bankAlias: f.get('bankAlias') || '',
+                config: {
+                    workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'),
+                    duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0),
+                    blockedDates: profile.config?.blockedDates || [],
+                    notificationsEnabled: f.get('notificationsEnabled') === 'on'
+                }
+            }).catch(() => {
                 setToast({ type:'error', message:'Error al guardar. Intentá de nuevo.' });
-            } finally { setSaving(false); }
+            });
+            if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
+            setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
+            setSaving(false);
         };
 
         const getWaLink = (apt) => {
