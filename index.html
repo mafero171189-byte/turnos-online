@@ -2413,6 +2413,8 @@
 
         const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
             setSaving(true);
+
+            // Datos livianos — siempre se mandan (sin el logo)
             const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
@@ -2428,28 +2430,47 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
+
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
+
+            const withTimeout = (promise, ms) => Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+            ]);
+
             try {
-                // Timeout de 12 s: si Firebase no responde, no se queda colgado para siempre
-                const timeout = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('timeout')), 12000)
-                );
-                await Promise.race([
+                // 1️⃣ Guardar datos livianos primero (rápido, sin logo)
+                await withTimeout(
                     db.collection("professionals").doc(user.uid).update(newData),
-                    timeout
-                ]);
+                    10000
+                );
+
+                // 2️⃣ Si el logo cambió, subirlo en una segunda escritura separada
+                const logoChanged = logoPreview !== profile.logoBase64;
+                if (logoChanged) {
+                    try {
+                        await withTimeout(
+                            db.collection("professionals").doc(user.uid).update({ logoBase64: logoPreview }),
+                            15000
+                        );
+                    } catch(logoErr) {
+                        // El logo falló pero los datos ya se guardaron — avisamos sin bloquear
+                        console.warn('Logo upload failed:', logoErr);
+                        setToast({ type:'error', message:'Datos guardados, pero el logo no se pudo subir. Intentá de nuevo.' });
+                        return;
+                    }
+                }
+
                 setToast({ type:'success', message:'¡Cambios guardados! Ya se ven en la página de turnos.' });
             } catch(err) {
-                if (err.message === 'timeout') {
-                    setToast({ type:'error', message:'La conexión tardó demasiado. Verificá tu internet e intentá de nuevo.' });
-                } else {
-                    setToast({ type:'error', message:'Error al guardar. Revisá tu conexión e intentá de nuevo.' });
-                }
                 console.error('doSaveProfile error:', err);
+                if (err.message === 'timeout') {
+                    setToast({ type:'error', message:'Sin conexión con el servidor. Verificá tu internet e intentá de nuevo.' });
+                } else {
+                    setToast({ type:'error', message:'Error al guardar: ' + (err.message || 'desconocido') });
+                }
             } finally {
-                // setSaving(false) SIEMPRE en finally — nunca antes del await
                 setSaving(false);
             }
         };
