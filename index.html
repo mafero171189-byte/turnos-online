@@ -2407,14 +2407,12 @@
 
         const doSaveProfile = (f, workingDays, local, newDuration, slug) => {
             setSaving(true);
-            const savedColor = f.get('themeColor');
-            db.collection("professionals").doc(user.uid).update({
+            const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
                 phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
                 address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
-                themeColor: savedColor, logoBase64: logoPreview, slug: slug || '',
-                // CAMPOS DE COBRO
+                themeColor: f.get('themeColor'), logoBase64: logoPreview, slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
                 config: {
@@ -2423,12 +2421,16 @@
                     blockedDates: profile.config?.blockedDates || [],
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
-            }).catch(() => {
-                setToast({ type:'error', message:'Error al guardar. Intentá de nuevo.' });
-            });
+            };
+            // Actualizar estado local INSTANTÁNEAMENTE sin esperar a Firebase
+            setProfile(prev => ({ ...prev, ...newData }));
+            const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
             setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
             setSaving(false);
+            // Guardar en Firebase en segundo plano
+            db.collection("professionals").doc(user.uid).update(newData)
+                .catch(() => setToast({ type:'error', message:'Error al guardar. Intentá de nuevo.' }));
         };
 
         const getWaLink = (apt) => {
