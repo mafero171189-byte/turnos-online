@@ -3215,7 +3215,14 @@
                         ),
                         onConfirm: () => {
                             window.location.href = `https://wa.me/${prof.phone}?text=${mensajeWS}`;
-                            setSent({ date: selectedDate, time: selectedTime, client: clientName });
+                            setSent({ 
+                                date: selectedDate, 
+                                time: selectedTime, 
+                                client: clientName,
+                                method: 'transfer',
+                                alias: prof.bankAlias,
+                                waLink: `https://wa.me/${prof.phone}?text=${mensajeWS}`
+                            });
                         }
                     });
                 }
