@@ -2234,6 +2234,33 @@
             }
         }, [profile]);
 
+        // --- LÓGICA DE NOTIFICACIONES PUSH ---
+        useEffect(() => {
+            const setupNotifications = async () => {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                try {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') return;
+                    const messaging = firebase.messaging();
+                    const currentToken = await messaging.getToken({ 
+                        vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU' 
+                    });
+                    if (currentToken) {
+                        await db.collection("professionals").doc(user.uid).update({
+                            fcmToken: currentToken,
+                            lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        console.log("Token de notificaciones guardado con éxito.");
+                    }
+                } catch (err) {
+                    console.warn("Error al configurar notificaciones push:", err);
+                }
+            };
+            if (profile && !profile.isSuspended) {
+                setupNotifications();
+            }
+        }, [profile, user]);
+
         if (!user || user.isAnonymous) return null; 
         if (loading) return <Spinner />;
         if (!profile) { 
