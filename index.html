@@ -70,6 +70,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
 
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
@@ -2241,9 +2242,11 @@
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission !== 'granted') return;
+                    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
                     const messaging = firebase.messaging();
                     const currentToken = await messaging.getToken({ 
-                        vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU' 
+                        vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU',
+                        serviceWorkerRegistration: reg
                     });
                     if (currentToken) {
                         await db.collection("professionals").doc(user.uid).update({
