@@ -2411,7 +2411,7 @@
                 price: f.get('price') || '',
                 phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
                 address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
-                themeColor: f.get('themeColor'), logoBase64: logoPreview, slug: slug || '',
+                themeColor: f.get('themeColor'), slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
                 config: {
@@ -2421,7 +2421,9 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            // Actualizar UI y liberar botón INSTANTÁNEAMENTE
+            // Solo subir el logo si realmente cambió — es muy pesado y enlentece Firebase
+            if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
+            // Actualizar UI y liberar botón INSTANTÁNEAMENTE sin esperar a Firebase
             setProfile(prev => ({ ...prev, ...newData }));
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
