@@ -3087,36 +3087,58 @@
             }
         };
 
-        const handleWaitlist = async (e) => {
+          const handleWaitlist = async (e) => {
             e.preventDefault();
+            
+            // Obtenemos el nombre usando el ID del input para evitar el error del e.target
+            const clientInput = document.getElementById('waitlistClient');
+            const clientName = clientInput ? clientInput.value.trim() : '';
+            
+            if (!clientName) { 
+                setToast({ type:'error', message:'Ingresá tu nombre y apellido.' }); 
+                return; 
+            }
+
             const wLocal = waitlistPhoneLocal.replace(/\D/g,'');
-            if (wLocal.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
+            if (wLocal.length < 8) { 
+                setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); 
+                return; 
+            }
+            
             const builtPhone = buildPhone(waitlistPhonePrefix, wLocal);
             setBooking(true);
+            
             try {
                 if (!auth.currentUser) await auth.signInAnonymously();
+                
                 // Verificar duplicado: misma fecha, mismo teléfono, mismo profesional
                 const dupSnap = await db.collection("waitlists")
                     .where("profId", "==", profId)
                     .where("date", "==", selectedDate)
                     .where("phone", "==", builtPhone)
                     .limit(1).get();
+                    
                 if (!dupSnap.empty) {
                     setToast({ type:'error', message:'Ya estás en la lista de espera para ese día.' });
-                    setBooking(false); return;
+                    setBooking(false); 
+                    return;
                 }
+                
                 await db.collection("waitlists").add({
                     profId,
                     date: selectedDate,
-                    client: e.target.waitlistClient.value.trim(),
+                    client: clientName,
                     phone: builtPhone,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                
                 setToast({type:'success', message:'¡Anotado! Te avisaremos si se libera un turno.'});
                 setShowWaitlistForm(false);
             } catch(err) {
                 setToast({type:'error', message:'No se pudo anotar en la lista.'});
-            } finally { setBooking(false); }
+            } finally { 
+                setBooking(false); 
+            }
         };
 
         const handleBooking = async (e) => {
