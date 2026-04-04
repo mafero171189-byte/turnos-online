@@ -2405,7 +2405,8 @@
             doSaveProfile(f, workingDays, local, newDuration, slug);
         };
 
-        const doSaveProfile = (f, workingDays, local, newDuration, slug) => {
+        const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
+            setSaving(true);
             const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
@@ -2421,17 +2422,20 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            // Solo subir el logo si realmente cambió — es muy pesado y enlentece Firebase
+            // Solo incluir el logo si cambió — es muy pesado y enlentece Firebase
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-            // Actualizar UI y liberar botón INSTANTÁNEAMENTE sin esperar a Firebase
+            // Actualizar la UI del admin instantáneamente sin esperar a Firebase
             setProfile(prev => ({ ...prev, ...newData }));
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-            setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
             setSaving(false);
-            // Firebase guarda en segundo plano
-            db.collection("professionals").doc(user.uid).update(newData)
-                .catch(() => setToast({ type:'error', message:'Error al guardar. Revisá tu conexión.' }));
+            try {
+                // Esperar confirmación de Firebase para que la página de turnos reciba el dato actualizado
+                await db.collection("professionals").doc(user.uid).update(newData);
+                setToast({ type:'success', message:'¡Perfil actualizado correctamente!'});
+            } catch(err) {
+                setToast({ type:'error', message:'Error al guardar. Revisá tu conexión.' });
+            }
         };
 
         const getWaLink = (apt) => {
