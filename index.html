@@ -2181,14 +2181,7 @@
                         prevAptsRef.current = newMap;
                         initialized.current = true;
                     },
-                    (err) => {
-                        console.warn('onSnapshot apts error:', err);
-                        // Si el listener muere (p.ej. red cortada), reintentamos en 5 s
-                        if (active) {
-                            try { if (unsubApts) unsubApts(); } catch(e) {}
-                            setTimeout(() => { if (active) subscribeApts(); }, 5000);
-                        }
-                    }
+                    (err) => { console.warn('onSnapshot apts error:', err); }
                 );
             };
             subscribeApts();
@@ -2431,16 +2424,18 @@
             };
             // Solo subir el logo si cambió — es muy pesado y enlentece Firebase
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-            // Actualizar la UI del admin INSTANTÁNEAMENTE sin esperar a Firebase
-            setProfile(prev => ({ ...prev, ...newData }));
             const savedColor = newData.themeColor;
             if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-            setSaving(false);
             try {
+                // Guardar en Firestore PRIMERO; el onSnapshot se encarga de actualizar el state
                 await db.collection("professionals").doc(user.uid).update(newData);
-                setToast({ type:'success', message:'¡Perfil guardado! Los cambios ya se ven en la página de turnos.'});
+                setToast({ type:'success', message:'¡Cambios guardados! Ya se ven en la página de turnos.' });
             } catch(err) {
-                setToast({ type:'error', message:'Error al guardar. Revisá tu conexión.' });
+                console.error('Error al guardar perfil:', err);
+                setToast({ type:'error', message:'Error al guardar. Revisá tu conexión e intentá de nuevo.' });
+            } finally {
+                // setSaving(false) SIEMPRE va en finally, nunca antes del await
+                setSaving(false);
             }
         };
 
@@ -2890,7 +2885,14 @@
                     <div className="fade-in space-y-6">
                         <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
                             <h2 className="text-xl font-semibold mb-6 flex items-center gap-2"><IconSettings /> Personalización y Perfil</h2>
-                            <form onSubmit={updateProfile} className="space-y-6">
+                            <form onSubmit={updateProfile} className="space-y-6" key={JSON.stringify({
+                                n: profile.name, b: profile.business, s: profile.service,
+                                ph: profile.phone, sl: profile.slug, tc: profile.themeColor,
+                                pm: profile.paymentMethod, ba: profile.bankAlias, pr: profile.price,
+                                st: profile.config?.startTime, et: profile.config?.endTime,
+                                du: profile.config?.duration, wd: profile.config?.workingDays,
+                                mp: profile.config?.maxPerDay, wa: profile.waTemplate
+                            })}>
                                 <div className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
                                     <div>
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Color de tu marca</label>
@@ -3126,12 +3128,6 @@
             };
         }, []);
 
-        // ── WARM-UP del backend (evita que Render esté dormido cuando llegue el webhook de MP) ──
-        useEffect(() => {
-            fetch('https://turnofacil-backend-4r9k.onrender.com/health', { method: 'GET' })
-                .catch(() => {}); // silencioso: solo importa despertar al servidor
-        }, []);
-
         useEffect(() => {
             const prevTitle = document.title;
             const handleSnap = (d) => {
@@ -3170,38 +3166,24 @@
                 setShowWaitlistForm(false);
                 setLoadingSlots(true);
                 const nowMs = Date.now();
-
-                const loadSlots = () => {
-                    setLoadingSlots(true);
-                    Promise.all([
-                        db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' }),
-                        db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' })
-                    ]).then(([aptsSnap, holdsSnap]) => {
-                        if (!active) return;
-                        const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
-                        const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
-                            const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
-                            return exp > Date.now() && d.sessionId !== sessionId.current;
-                        }).map(d => d.time);
-                        setBookedTimes([...new Set([...fromApts, ...fromHolds])]);
-                        setLoadingSlots(false);
-                    }).catch(() => {
-                        if (!active) return;
-                        setBookedTimes([]); setLoadingSlots(false);
-                        setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' });
-                    });
-                };
-
-                loadSlots();
-
-                // Recargar horarios desde el servidor si el usuario vuelve a la pestaña
-                // (cubre el caso de volver desde Mercado Pago: el turno ya existe en Firestore)
-                const handleVisibilitySlots = () => {
-                    if (document.visibilityState === 'visible' && active) loadSlots();
-                };
-                document.addEventListener('visibilitychange', handleVisibilitySlots);
-
-                return () => { active = false; document.removeEventListener('visibilitychange', handleVisibilitySlots); };
+                Promise.all([
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
+                ]).then(([aptsSnap, holdsSnap]) => {
+                    if (!active) return;
+                    const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
+                    const fromHolds = holdsSnap.docs.map(d => d.data()).filter(d => {
+                        const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : new Date(d.expiresAt).getTime();
+                        return exp > nowMs && d.sessionId !== sessionId.current;
+                    }).map(d => d.time);
+                    setBookedTimes([...new Set([...fromApts, ...fromHolds])]);
+                    setLoadingSlots(false);
+                }).catch(() => {
+                    if (!active) return;
+                    setBookedTimes([]); setLoadingSlots(false);
+                    setToast({ type:'error', message:'No se pudieron cargar los horarios. Recargá la página.' });
+                });
+                return () => { active = false; };
             }
         }, [selectedDate, profId]);
 
