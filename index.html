@@ -979,25 +979,44 @@
             }});
         };
 
-        const purgeOldData = async () => {
-            setDialog({ type: 'confirm', title: 'Purga de Datos Antiguos', message: '⚠️ ATENCIÓN: Se eliminarán permanentemente todos los turnos que tengan más de 6 meses de antigüedad. Esto optimiza la base de datos.', onConfirm: async () => {
+          const purgeOldData = async () => {
+            setDialog({ type: 'confirm', title: 'Purga de Datos Antiguos', message: '⚠️ ATENCIÓN: Se eliminarán los turnos de más de 6 meses Y toda la lista de espera de días que ya pasaron. ¿Confirmar?', onConfirm: async () => {
                 setLoading(true);
                 try {
+                    const todayStr = getTodayStr();
                     let d = new Date(); d.setMonth(d.getMonth() - 6);
                     let limitDate = d.toISOString().split('T')[0];
-                    // Borrado por lotes reales con limit() para evitar colapso de memoria
-                    let borrados = 0;
+                    
+                    let borradosTurnos = 0;
+                    let borradosEspera = 0;
+
+                    // 1. Purgar turnos muy viejos (+6 meses)
                     while (true) {
                         const snap = await db.collection("appointments").where("date", "<", limitDate).limit(400).get();
                         if (snap.empty) break;
                         const batch = db.batch();
                         snap.docs.forEach(doc => batch.delete(doc.ref));
                         await batch.commit();
-                        borrados += snap.size;
+                        borradosTurnos += snap.size;
                     }
-                    if (borrados === 0) { setToast({type:'success', message:'No hay turnos tan antiguos para borrar.'}); setLoading(false); return; }
-                    setToast({type:'success', message:`Se eliminaron ${borrados} turnos antiguos.`});
-                } catch(e) { setToast({type:'error', message:'Error durante la purga.'}); }
+
+                    // 2. Purgar Lista de Espera de días pasados (menores a hoy)
+                    while (true) {
+                        const snapWait = await db.collection("waitlists").where("date", "<", todayStr).limit(400).get();
+                        if (snapWait.empty) break;
+                        const batchWait = db.batch();
+                        snapWait.docs.forEach(doc => batchWait.delete(doc.ref));
+                        await batchWait.commit();
+                        borradosEspera += snapWait.size;
+                    }
+
+                    setToast({
+                        type: 'success', 
+                        message: `Limpieza completada: ${borradosTurnos} turnos viejos y ${borradosEspera} registros de espera eliminados.`
+                    });
+                } catch(e) { 
+                    setToast({type:'error', message:'Error durante la purga.'}); 
+                }
                 setLoading(false);
             }});
         };
