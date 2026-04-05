@@ -2971,18 +2971,38 @@
                                     </div>
                                     <div className="mt-6">
                                         <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
-                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
+                                            <input 
+                                                name="notificationsEnabled" 
+                                                type="checkbox" 
+                                                defaultChecked={profile.config?.notificationsEnabled !== false} 
+                                                className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
                                                 onChange={async (e) => {
                                                     if (!e.target.checked) return;
-                                                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                                                    if (isIOS) {
-                                                        // Safari/iOS bloquea permisos si no nacen de un gesto: solo guardamos la preferencia
-                                                        return;
-                                                    }
-                                                    // Android / desktop: pedimos permiso nativo en respuesta al clic real del usuario
                                                     const granted = await requestNotificationPermission().catch(() => false);
                                                     if (!granted) {
                                                         e.target.checked = false;
+                                                        setToast({ type: 'error', message: 'Permiso denegado. Habilitalo tocando el candado del navegador.' });
+                                                        return;
+                                                    }
+                                                    if ('serviceWorker' in navigator && 'PushManager' in window) {
+                                                        try {
+                                                            const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                                                            const messaging = firebase.messaging();
+                                                            const currentToken = await messaging.getToken({ 
+                                                                vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU',
+                                                                serviceWorkerRegistration: reg
+                                                            });
+                                                            if (currentToken) {
+                                                                await db.collection("professionals").doc(user.uid).update({
+                                                                    fcmToken: currentToken,
+                                                                    lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp()
+                                                                });
+                                                                setToast({ type: 'success', message: '¡Notificaciones push activadas correctamente!' });
+                                                            }
+                                                        } catch (err) {
+                                                            console.warn("Error al activar push:", err);
+                                                            setToast({ type: 'error', message: 'Error al conectar con notificaciones.' });
+                                                        }
                                                     }
                                                 }}
                                             />
