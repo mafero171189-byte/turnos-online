@@ -1604,16 +1604,18 @@
         const today = getTodayStr();
 
         useEffect(() => {
-            if (!selDate) return;
-            let active = true;
-            setSelTime('');
-            setBookedTimes([]);
-            setLoadingSlots(true);
-            db.collection("appointments").where("profId","==",profId).where("date","==",selDate).get()
-                .then(snap => { if (!active) return; setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); setLoadingSlots(false); })
-                .catch(() => { if (!active) return; setBookedTimes([]); setLoadingSlots(false); });
-            return () => { active = false; };
-        }, [selDate]);
+            if (selectedDate && profId) {
+                let active = true;
+                abandonHold();
+                setSelectedTime('');
+                setBookedTimes([]);
+                setShowWaitlistForm(false);
+                setLoadingSlots(true);
+                const nowMs = Date.now();
+                Promise.all([
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' }),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' })
+                ]).then(([aptsSnap, holdsSnap]) => {
 
         let availableSlots = []; let isDayUnavailable = false; let isBlockedDay = false;
         if (selDate && profile?.config && !loadingSlots) {
@@ -3638,7 +3640,7 @@
             setSearching(true);
             try {
                 const today = getTodayStr();
-                const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get();
+                const snap  = await db.collection("appointments").where("profId","==",profId).where("dni","==",dniClean).get({ source: 'server' });
                 if (!mountedRef.current) return;
                 
                 const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
@@ -3767,11 +3769,12 @@
     const manifestURL = URL.createObjectURL(blobManifest);
     document.head.insertAdjacentHTML('beforeend', `<link rel="manifest" href="${manifestURL}">`);
     
-    // 2. Registrar el Service Worker de Firebase (sirve para PWA y Notificaciones en segundo plano)
+    // 2. Registrar el Service Worker de Firebase y FORZAR su actualización
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(console.error);
-    }
-    
+        navigator.serviceWorker.register('/firebase-messaging-sw.js').then(reg => {
+            reg.update(); // Obliga al celular a borrar el SW viejo/falso y usar el de Firebase
+        }).catch(console.error);
+    }    
     // 3. Crear el banner fijo arriba de todo (Adaptado a los colores de Turno Fácil)
     const bannerInstalar = document.createElement('div');
     bannerInstalar.id = 'banner-instalar-app';
