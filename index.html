@@ -98,27 +98,6 @@
         cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
     });
 
-    // Activar persistencia sin conexión (MAGIA PARA CELULARES)
-    // Esto hace que los datos se guarden al instante en la memoria del celu 
-    // y se sincronicen en segundo plano sin colgar el botón de "Guardando..."
-    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-        console.warn("No se pudo activar la persistencia:", err);
-    });
-
-    // Activar persistencia sin conexión (MAGIA PARA CELULARES)
-    // Esto hace que los datos se guarden al instante en la memoria del celu 
-    // y se sincronicen en segundo plano sin colgar el botón de "Guardando..."
-    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-        console.warn("No se pudo activar la persistencia:", err);
-    });
-
-    // Activar persistencia sin conexión (MAGIA PARA CELULARES)
-    // Esto hace que los datos se guarden al instante en la memoria del celu 
-    // y se sincronicen en segundo plano sin colgar el botón de "Guardando..."
-    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-        console.warn("No se pudo activar la persistencia:", err);
-    });
-
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
         L.Icon.Default.mergeOptions({
@@ -2406,17 +2385,14 @@
                 }
             };
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-
-            try {
-                await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
-                setProfile(prev => ({ ...prev, ...newData }));
-                setToast({ type:'success', message:'¡Guardado con éxito!' });
-            } catch (err) {
-                console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
-            } finally {
-                setSaving(false);
-            }
+            // 1. Actualizamos la pantalla AL INSTANTE sin esperar a la conexión lenta
+            setProfile(prev => ({ ...prev, ...newData }));
+            setToast({ type:'success', message:'¡Guardado con éxito!' });
+            setSaving(false);
+            // 2. Mandamos los datos a la nube por detrás, en modo silencioso
+            db.collection("professionals").doc(user.uid).set(newData, { merge: true }).catch((err) => {
+                console.error("Error al sincronizar en segundo plano:", err);
+            });
         };
 
         const getWaLink = (apt) => {
