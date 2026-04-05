@@ -67,10 +67,11 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+
 
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
@@ -84,18 +85,32 @@
         appId: "1:896497868092:web:8c0deaf5bd7e7b5d51d239"
     };
 
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      // Inicialización limpia
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // Configuramos Firestore para que sea más estable en móviles
+    db.settings({
+        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+        merge: true
+    });
+
+    // Manejador de red simple
     if (!window._visibilityHandlerSet) {
         window._visibilityHandlerSet = true;
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                try { db.enableNetwork().catch(() => {}); } catch(e) {}
+                db.enableNetwork().catch(() => {});
+            } else {
+                db.disableNetwork().catch(() => {});
             }
         });
     }
+
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -2119,9 +2134,8 @@
             const subscribeApts = () => {
                 if (!active) return;
                 
-                const pastDate = new Date();
-                pastDate.setDate(pastDate.getDate() - 30);
-                const minDate = `${pastDate.getFullYear()}-${String(pastDate.getMonth()+1).padStart(2,'0')}-${String(pastDate.getDate()).padStart(2,'0')}`;
+                // Ahora solo escuchamos turnos de HOY en adelante. Ahorro masivo de cuota.
+                const minDate = getTodayStr();
 
                 unsubApts = db.collection("appointments")
                     .where("profId","==",user.uid)
@@ -2186,10 +2200,13 @@
             };
             subscribeApts();
 
+            let lastMinute = new Date().getMinutes();
             const minuteTimer = setInterval(() => {
+                const now = new Date();
+                if (now.getMinutes() === lastMinute) return; // Si no cambió el minuto, no hacemos nada
+                lastMinute = now.getMinutes();
                 if (!active || allAptsRef.current.length === 0) return;
                 const today = getTodayStr();
-                const now = new Date();
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isPastNow = (a) => {
                     if (a.date < today) return true;
@@ -2198,16 +2215,12 @@
                 };
                 const all = allAptsRef.current;
                 
-                const pastDateT = new Date();
-                pastDateT.setDate(pastDateT.getDate() - 30);
-                const minDateT = `${pastDateT.getFullYear()}-${String(pastDateT.getMonth()+1).padStart(2,'0')}-${String(pastDateT.getDate()).padStart(2,'0')}`;
-                
-                setApts(all.filter(a => !isPastNow(a) || (a.cancelled && a.date >= minDateT)).sort((a,b) => {
+                setApts(all.filter(a => !isPastNow(a) || a.cancelled).sort((a,b) => {
                     if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
                     return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                 }));
                 setPastApts(all.filter(a => isPastNow(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
-            }, 60000);
+            }, 30000); // Chequeamos cada 30 seg pero solo actualizamos al cambiar el minuto
             return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); if (unsubWaitlist) unsubWaitlist(); };
         }, [user]);
 
@@ -2355,58 +2368,20 @@
         };
 
         const updateProfile = async (e) => {
-            e.preventDefault(); const f = new FormData(e.target);
-            const workingDays = DAYS.filter(d => f.get(`day_${d.id}`)).map(d => d.id);
-            if (workingDays.length === 0) { setToast({ type:'error', message:'Seleccioná al menos un día de trabajo.' }); return; }
-            const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
-            if (local.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
-
-            // VALIDACIÓN MERCADO PAGO: Debe tener precio numérico
-            const paymentMethod = f.get('paymentMethod');
-            const priceVal = f.get('price') || '';
-            const numericPrice = priceVal.replace(/\D/g, '');
-            if (paymentMethod === 'mercadopago' && (!numericPrice || numericPrice === '0')) {
-                setToast({ type:'error', message:'Para cobrar con Mercado Pago, debés ingresar un Precio numérico (ej: 5000).' });
-                setSaving(false);
-                return;
-            }
-            
-            let slug = f.get('slug').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-            
-            const startTime = f.get('startTime'); const endTime = f.get('endTime');
-            const newDuration = Number(f.get('duration'));
-            const durationChanged = newDuration !== (profile.config?.duration || 30);
-            const activeApts = apts.filter(a => !a.cancelled).length;
-
+            e.preventDefault();
+            if (saving) return;
             setSaving(true);
+            const f = new FormData(e.target);
+            const workingDays = DAYS.filter(d => f.get(`day_${d.id}`)).map(d => d.id);
+            const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
+            let slug = f.get('slug').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+            if (workingDays.length === 0) { setToast({ type:'error', message:'Seleccioná días.' }); setSaving(false); return; }
             
-            if (slug && slug !== profile.slug) {
-                try {
-                    const snap = await db.collection("professionals").where("slug", "==", slug).get();
-                    const exists = snap.docs.some(d => d.id !== user.uid);
-                    if (exists) { 
-                        setToast({ type:'error', message:'Ese link personalizado ya está en uso. Elegí otro.' }); 
-                        setSaving(false); 
-                        return; 
-                    }
-                } catch(e) { console.error(e); }
-            }
-            
-            if (durationChanged && activeApts > 0) {
-                setDialog({
-                    type:'confirm',
-                    title:'⚠️ Cambio de duración',
-                    message:`Tenés ${activeApts} turno${activeApts > 1 ? 's' : ''} activo${activeApts > 1 ? 's' : ''} reservado${activeApts > 1 ? 's' : ''} con ${profile.config?.duration || 30} min. Los existentes no cambian, pero los nuevos se generarán con ${newDuration} min. ¿Continuar?`,
-                    onConfirm: () => doSaveProfile(f, workingDays, local, newDuration, slug)
-                });
-                setSaving(false);
-                return;
-            }
-            doSaveProfile(f, workingDays, local, newDuration, slug);
+            doSaveProfile(f, workingDays, local, Number(f.get('duration')), slug);
         };
 
         const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
-            setSaving(true);
             const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
@@ -2423,16 +2398,28 @@
                 }
             };
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-            const savedColor = newData.themeColor;
-            if (savedColor) document.documentElement.style.setProperty('--custom-color', savedColor);
-            setProfile(prev => ({ ...prev, ...newData }));
-            setSaving(false);
-            setToast({ type:'success', message:'¡Cambios guardados! Ya se ven en la página de turnos.' });
-            db.collection("professionals").doc(user.uid).update(newData)
-                .catch(err => {
-                    console.error('Firebase sync error:', err.code, err.message);
-                    setToast({ type:'error', message:'Error al sincronizar: ' + (err.code || err.message) });
-                });
+
+            // 1. Intentamos forzar la conexión por si Firestore se quedó "dormido"
+            db.enableNetwork().catch(() => {});
+
+            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 6 segundos
+            const safetyUnlock = setTimeout(() => {
+                setSaving(false);
+                setToast({ type:'error', message: 'La base de datos está lenta. Reintentando...' });
+            }, 6000);
+
+            try {
+                await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
+                clearTimeout(safetyUnlock);
+                setProfile(prev => ({ ...prev, ...newData }));
+                setToast({ type:'success', message:'¡Guardado con éxito!' });
+            } catch (err) {
+                clearTimeout(safetyUnlock);
+                console.error(err);
+                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
+            } finally {
+                setSaving(false);
+            }
         };
 
         const getWaLink = (apt) => {
@@ -3177,12 +3164,7 @@
         }, [selectedDate, profId]);
 
         const selectTime = async (time) => {
-            if (selectingSlot) return;
-            if (time === selectedTime) {
-                await abandonHold(true);
-                setSelectedTime('');
-                return;
-            }
+            if (selectingSlot || time === selectedTime) return; // GUARD: evita doble clic y re-selección
             setSelectingSlot(true);
             if (currentHoldRef.current) {
                 await releaseHold(currentHoldRef.current);
