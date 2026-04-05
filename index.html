@@ -2239,8 +2239,9 @@
             const setupNotifications = async () => {
                 if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
                 try {
-                    const permission = await Notification.requestPermission();
-                    if (permission !== 'granted') return;
+                    // Verificamos si YA tenemos permiso. Si no lo tenemos, cortamos acá sin lanzar el cartel.
+                    if (Notification.permission !== 'granted') return;
+                    
                     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
                     const messaging = firebase.messaging();
                     const currentToken = await messaging.getToken({ 
