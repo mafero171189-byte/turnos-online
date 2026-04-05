@@ -2402,11 +2402,11 @@
             // 1. Intentamos forzar la conexión por si Firestore se quedó "dormido"
             db.enableNetwork().catch(() => {});
 
-            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 6 segundos
+            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
             const safetyUnlock = setTimeout(() => {
-                setSaving(false);
-                setToast({ type:'error', message: 'La base de datos está lenta. Reintentando...' });
-            }, 6000);
+    setSaving(false);
+    setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
+}, 12000); // <-- Cambiado a 12 segundos (12000)
 
             try {
                 await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
