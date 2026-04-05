@@ -95,22 +95,8 @@
 
     // Configuramos Firestore para que sea más estable en móviles
     db.settings({
-        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
-        merge: true
+        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
     });
-
-    // Manejador de red simple
-    if (!window._visibilityHandlerSet) {
-        window._visibilityHandlerSet = true;
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                db.enableNetwork().catch(() => {});
-            } else {
-                db.disableNetwork().catch(() => {});
-            }
-        });
-    }
-
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -2398,9 +2384,6 @@
                 }
             };
             if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
-
-            // 1. Intentamos forzar la conexión por si Firestore se quedó "dormido"
-            db.enableNetwork().catch(() => {});
 
             // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
             const safetyUnlock = setTimeout(() => {
