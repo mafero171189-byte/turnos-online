@@ -96,12 +96,14 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Modo 100% online: forzar lectura/escritura siempre desde el servidor
-    db.settings({
-        ignoreUndefinedProperties: true
+    // Activamos persistencia offline SOLO para que las escrituras sean confiables y rápidas.
+    // Los datos del servidor siempre se priorizan sobre el caché.
+    db.enablePersistence({ synchronizeTabs: false }).catch(err => {
+        // Si falla (ej: múltiples pestañas), seguimos en modo online normal
+        console.warn('Persistencia no disponible:', err.code);
     });
 
-    // Limpiar caché de Firestore y datos locales al iniciar (excepto sesión de Auth)
+    // Limpiar datos locales que NO sean de Firebase al iniciar
     try {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -684,7 +686,7 @@
                         setView('client'); 
                     } else {
                         try {
-                            const snap = await db.collection("professionals").where("slug", "==", p).limit(1).get();
+                            const snap = await db.collection("professionals").where("slug", "==", p).limit(1).get({ source: 'server' });
                             if (!snap.empty) {
                                 setProfId(snap.docs[0].id);
                                 setView('client');
@@ -2361,19 +2363,11 @@
                 }
             };
 
-            // Seguro que destraba el botón si el servidor tarda demasiado (30s en modo online)
-            const safetyUnlock = setTimeout(() => {
-                setSaving(false);
-                setToast({ type:'error', message: 'El servidor tardó mucho. Revisá tu internet y reintentá.' });
-            }, 30000);
-
             try {
                 await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
-                clearTimeout(safetyUnlock);
                 setProfile(prev => ({ ...prev, ...newData }));
                 setToast({ type:'success', message:'¡Guardado con éxito!' });
             } catch (err) {
-                clearTimeout(safetyUnlock);
                 console.error(err);
                 setToast({ type:'error', message: 'Error al guardar. Revisá tu conexión y reintentá.' });
             } finally {
@@ -3091,8 +3085,8 @@
                 setLoadingSlots(true);
                 const nowMs = Date.now();
                 Promise.all([
-                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
-                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' }),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' })
                 ]).then(([aptsSnap, holdsSnap]) => {
                     if (!active) return;
                     const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
