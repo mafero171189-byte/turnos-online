@@ -3,9 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <title>Turno Fácil Pro</title>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://cdn.tailwindcss.com">
@@ -2350,22 +2347,50 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
+            if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
 
-            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
-            const safetyUnlock = setTimeout(() => {
-    setSaving(false);
-    setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
-}, 12000); // <-- Cambiado a 12 segundos (12000)
+            // Convertir valor JS a formato de campo Firestore REST
+            const toFirestoreValue = (val) => {
+                if (val === null || val === undefined) return { nullValue: null };
+                if (typeof val === 'boolean') return { booleanValue: val };
+                if (typeof val === 'number') return { integerValue: String(val) };
+                if (typeof val === 'string') return { stringValue: val };
+                if (Array.isArray(val)) return { arrayValue: { values: val.map(toFirestoreValue) } };
+                if (typeof val === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(val).map(([k,v]) => [k, toFirestoreValue(v)])) } };
+                return { stringValue: String(val) };
+            };
+
+            const fields = Object.fromEntries(Object.entries(newData).map(([k,v]) => [k, toFirestoreValue(v)]));
 
             try {
-                await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
-                clearTimeout(safetyUnlock);
+                // Obtener token de Auth fresco
+                const token = await user.getIdToken(true);
+                const projectId = 'turno-facil-53956';
+                const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/professionals/${user.uid}?currentDocument.exists=false`;
+
+                // Primero intentar PATCH (actualizar si existe)
+                const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/professionals/${user.uid}`;
+                const updateMask = Object.keys(newData).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+
+                const res = await fetch(`${patchUrl}?${updateMask}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ fields })
+                });
+
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({}));
+                    throw new Error(errBody?.error?.message || `HTTP ${res.status}`);
+                }
+
                 setProfile(prev => ({ ...prev, ...newData }));
                 setToast({ type:'success', message:'¡Guardado con éxito!' });
             } catch (err) {
-                clearTimeout(safetyUnlock);
-                console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
+                console.error('Error al guardar:', err);
+                setToast({ type:'error', message:`Error: ${err.message}` });
             } finally {
                 setSaving(false);
             }
