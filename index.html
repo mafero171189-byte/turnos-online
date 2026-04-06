@@ -2373,7 +2373,6 @@
         };
 
         const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
-            // 1. Datos livianos (texto y números)
             const newData = {
                 name: f.get('name'), 
                 business: f.get('business'), 
@@ -2388,34 +2387,30 @@
                 slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
+                // Actualizamos la config sin tocar el campo de notificaciones
                 "config.workingDays": workingDays,
                 "config.startTime": f.get('startTime'),
                 "config.endTime": f.get('endTime'),
                 "config.duration": newDuration,
-                "config.maxPerDay": Number(f.get('maxPerDay')||0),
-                "config.notificationsEnabled": f.get('notificationsEnabled') === 'on'
+                "config.maxPerDay": Number(f.get('maxPerDay')||0)
             };
-            // 2. SOLO mandamos el logo si el usuario seleccionó uno nuevo
-            // Esto evita subir 80KB de texto innecesariamente cada vez
+            // Solo mandamos el logo si es estrictamente necesario
             if (logoPreview && logoPreview !== profile.logoBase64) {
                 newData.logoBase64 = logoPreview;
             }
-            // 3. Seguro de 20 segundos para el cartel de internet
             const safetyUnlock = setTimeout(() => {
                 setSaving(false);
-                setToast({ type:'error', message: 'La conexión está lenta. Revisá tu señal.' });
-            }, 20000);
+                setToast({ type:'error', message: 'Conexión lenta. Reintentá en un momento.' });
+            }, 15000);
             try {
-                // USAMOS .update() que es directo y mucho más veloz en móviles
+                // USAMOS .update(): Es vital para que el celular no se tilde
                 await db.collection("professionals").doc(user.uid).update(newData);
-                
                 clearTimeout(safetyUnlock);
                 setProfile(prev => ({ ...prev, ...newData }));
-                setToast({ type:'success', message:'¡Perfil actualizado! 🚀' });
+                setToast({ type:'success', message:'¡Perfil guardado! 🚀' });
             } catch (err) {
                 clearTimeout(safetyUnlock);
-                console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
+                setToast({ type:'error', message: 'Error al guardar.' });
             } finally {
                 setSaving(false);
             }
@@ -2989,36 +2984,31 @@
                                             <input 
                                                 name="notificationsEnabled" 
                                                 type="checkbox" 
+                                                // Ahora aparece destildado por defecto si no lo activaste
                                                 defaultChecked={profile.config?.notificationsEnabled === true} 
                                                 className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
                                                 onChange={async (e) => {
                                                     const isChecked = e.target.checked;
                                                     
-                                                    // 1. Solo pedimos permiso al navegador si el usuario activa el check
                                                     if (isChecked) {
                                                         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
                                                         if (!isIOS) {
-                                                            // Esta función lanza el cartel nativo del navegador (Chrome/Android)
                                                             const granted = await requestNotificationPermission().catch(() => false);
                                                             if (!granted) {
                                                                 e.target.checked = false;
-                                                                setToast({ type: 'error', message: 'Permiso de notificaciones denegado.' });
+                                                                setToast({ type: 'error', message: 'Permiso denegado por el celular.' });
                                                                 return;
                                                             }
                                                         }
                                                     }
-                                                    // 2. Guardado instantáneo 100% Online (sin depender del botón "Guardar Cambios")
+                                                    // GUARDADO INSTANTÁNEO: Esto evita que el botón de abajo se cuelgue
                                                     try {
                                                         await db.collection("professionals").doc(user.uid).update({
                                                             "config.notificationsEnabled": isChecked
                                                         });
-                                                        setToast({ 
-                                                            type: 'success', 
-                                                            message: isChecked ? '🔔 Notificaciones activadas' : '🔕 Notificaciones desactivadas' 
-                                                        });
+                                                        setToast({ type: 'success', message: isChecked ? '🔔 Notificaciones ON' : '🔕 Notificaciones OFF' });
                                                     } catch (err) {
-                                                        setToast({ type: 'error', message: 'Error de conexión con el servidor.' });
-                                                        e.target.checked = !isChecked; // Revertimos el check si falla la red
+                                                        setToast({ type: 'error', message: 'Error de red.' });
                                                     }
                                                 }}
                                             />
