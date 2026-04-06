@@ -2978,24 +2978,25 @@
                                             <input 
                                                 name="notificationsEnabled" 
                                                 type="checkbox" 
-                                                defaultChecked={profile.config?.notificationsEnabled !== false} 
+                                                defaultChecked={profile.config?.notificationsEnabled === true} 
                                                 className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
                                                 onChange={async (e) => {
                                                     const isChecked = e.target.checked;
                                                     
-                                                    // 1. Si lo activan, pedimos permiso (solo en Android/PC, iOS es manual)
+                                                    // 1. Solo pedimos permiso al navegador si el usuario activa el check
                                                     if (isChecked) {
                                                         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
                                                         if (!isIOS) {
+                                                            // Esta función lanza el cartel nativo del navegador (Chrome/Android)
                                                             const granted = await requestNotificationPermission().catch(() => false);
                                                             if (!granted) {
                                                                 e.target.checked = false;
-                                                                setToast({ type: 'error', message: 'Permiso de notificaciones denegado en el navegador.' });
+                                                                setToast({ type: 'error', message: 'Permiso de notificaciones denegado.' });
                                                                 return;
                                                             }
                                                         }
                                                     }
-                                                    // 2. GUARDADO INSTANTÁNEO: Así no tenés que esperar a "Guardar Cambios"
+                                                    // 2. Guardado instantáneo 100% Online (sin depender del botón "Guardar Cambios")
                                                     try {
                                                         await db.collection("professionals").doc(user.uid).update({
                                                             "config.notificationsEnabled": isChecked
@@ -3005,8 +3006,8 @@
                                                             message: isChecked ? '🔔 Notificaciones activadas' : '🔕 Notificaciones desactivadas' 
                                                         });
                                                     } catch (err) {
-                                                        setToast({ type: 'error', message: 'Error al actualizar preferencia.' });
-                                                        e.target.checked = !isChecked; // Revertimos el check si falló
+                                                        setToast({ type: 'error', message: 'Error de conexión con el servidor.' });
+                                                        e.target.checked = !isChecked; // Revertimos el check si falla la red
                                                     }
                                                 }}
                                             />
