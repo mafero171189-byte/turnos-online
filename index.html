@@ -2243,10 +2243,15 @@
             const setupNotifications = async () => {
                 if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
                 try {
-                    // Verificamos si YA tenemos permiso. Si no lo tenemos, cortamos acá sin lanzar el cartel.
                     if (Notification.permission !== 'granted') return;
                     
-                    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                    // Intentamos registrar con ruta relativa para GitHub Pages
+                    const reg = await navigator.serviceWorker.register('./firebase-messaging-sw.js')
+                        .catch(err => {
+                            console.warn("Archivo sw.js no encontrado, notificaciones en segundo plano desactivadas.");
+                            return null; 
+                        });
+                    if (!reg) return; // Si no hay archivo, salimos sin tirar error crítico
                     const messaging = firebase.messaging();
                     const currentToken = await messaging.getToken({ 
                         vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU',
@@ -2257,10 +2262,9 @@
                             fcmToken: currentToken,
                             lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp()
                         });
-                        console.log("Token de notificaciones guardado con éxito.");
                     }
                 } catch (err) {
-                    console.warn("Error al configurar notificaciones push:", err);
+                    console.warn("Aviso: Notificaciones push no configuradas.");
                 }
             };
             if (profile && !profile.isSuspended) {
@@ -2373,59 +2377,53 @@
         };
 
         const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
-            // 1. Preparamos el objeto para Firebase usando notación de puntos
+            // Datos livianos: enviamos solo lo necesario
             const updateData = {
-                name: f.get('name'), 
-                business: f.get('business'), 
+                name: f.get('name'),
+                business: f.get('business'),
                 service: f.get('service'),
                 price: f.get('price') || '',
-                phone: buildPhone(f.get('phonePrefix'), local), 
+                phone: buildPhone(f.get('phonePrefix'), local),
                 waTemplate: f.get('waTemplate'),
-                address: addressInput.trim(), 
-                addressLat: addressLat, 
+                address: addressInput.trim(),
+                addressLat: addressLat,
                 addressLng: addressLng,
-                themeColor: f.get('themeColor'), 
+                themeColor: f.get('themeColor'),
                 slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
+                // Notación de puntos = velocidad total en Firebase
                 "config.workingDays": workingDays,
                 "config.startTime": f.get('startTime'),
                 "config.endTime": f.get('endTime'),
                 "config.duration": newDuration,
                 "config.maxPerDay": Number(f.get('maxPerDay')||0)
-                // Quitamos notificationsEnabled de aquí para que no choque con el otro check
             };
-            // 2. Solo mandamos el logo si realmente seleccionaste uno nuevo
+            // Filtro inteligente para el logo
             if (logoPreview && logoPreview.startsWith('data:image') && logoPreview !== profile.logoBase64) {
                 updateData.logoBase64 = logoPreview;
             }
             const safetyUnlock = setTimeout(() => {
                 setSaving(false);
-                setToast({ type:'error', message: 'La conexión está lenta. Revisá tu señal.' });
+                setToast({ type:'error', message: 'Conexión lenta. Intentá de nuevo.' });
             }, 15000);
             try {
-                // Actualización directa en la nube
+                // .update() es mucho más liviano que .set()
                 await db.collection("professionals").doc(user.uid).update(updateData);
                 
                 clearTimeout(safetyUnlock);
-                // CORRECCIÓN: Actualizamos el estado local de forma que React lo entienda
+                
+                // Actualizamos React manualmente para que los checks cambien al toque
                 setProfile(prev => ({ 
                     ...prev, 
                     ...updateData,
-                    config: {
-                        ...prev.config,
-                        workingDays,
-                        startTime: f.get('startTime'),
-                        endTime: f.get('endTime'),
-                        duration: newDuration,
-                        maxPerDay: Number(f.get('maxPerDay')||0)
-                    }
+                    config: { ...prev.config, workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'), duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0) }
                 }));
-                setToast({ type:'success', message:'¡Cambios guardados con éxito! 🚀' });
+                
+                setToast({ type:'success', message:'¡Guardado correctamente! 🚀' });
             } catch (err) {
                 clearTimeout(safetyUnlock);
-                console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
+                setToast({ type:'error', message: 'Error al guardar.' });
             } finally {
                 setSaving(false);
             }
