@@ -96,18 +96,16 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Modo 100% online: sin caché local persistente
-    // experimentalForceLongPolling asegura conexión directa al servidor
+    // Modo 100% online: forzar lectura/escritura siempre desde el servidor
     db.settings({
         ignoreUndefinedProperties: true
     });
 
-    // Limpiar caché de Firestore y datos locales al iniciar (excepto lo de Auth)
+    // Limpiar caché de Firestore y datos locales al iniciar (excepto sesión de Auth)
     try {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
-            // Solo borramos claves de Firestore, NO las de Firebase Auth (firebase:authUser...)
             if (k && !k.startsWith('firebase:')) keysToRemove.push(k);
         }
         keysToRemove.forEach(k => localStorage.removeItem(k));
@@ -2363,11 +2361,11 @@
                 }
             };
 
-            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
+            // Seguro que destraba el botón si el servidor tarda demasiado (30s en modo online)
             const safetyUnlock = setTimeout(() => {
-    setSaving(false);
-    setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
-}, 12000); // <-- Cambiado a 12 segundos (12000)
+                setSaving(false);
+                setToast({ type:'error', message: 'El servidor tardó mucho. Revisá tu internet y reintentá.' });
+            }, 30000);
 
             try {
                 await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
@@ -2377,7 +2375,7 @@
             } catch (err) {
                 clearTimeout(safetyUnlock);
                 console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
+                setToast({ type:'error', message: 'Error al guardar. Revisá tu conexión y reintentá.' });
             } finally {
                 setSaving(false);
             }
