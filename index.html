@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -95,14 +95,12 @@
     
     const auth = firebase.auth();
     const db = firebase.firestore();
-    // --- NUEVA CONFIGURACIÓN 100% ONLINE ---
-    // 1. Limpiamos cualquier "basura" que haya quedado en el celu
-    db.clearPersistence().catch(() => {});
-    // 2. Desactivamos la persistencia para que no guarde cache nunca más
+    // MODO 100% ONLINE: Prohibimos el uso de disco local
     db.settings({
         persistence: false 
     });
-    // ---------------------------------------
+    // Limpieza de restos en segundo plano (no bloquea el arranque)
+    db.clearPersistence().catch(() => {});
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
