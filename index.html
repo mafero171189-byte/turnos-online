@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Turno Fácil Pro</title>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://cdn.tailwindcss.com">
@@ -92,11 +95,14 @@
     
     const auth = firebase.auth();
     const db = firebase.firestore();
-
-    // Configuramos Firestore para que sea más estable en móviles
+    // --- NUEVA CONFIGURACIÓN 100% ONLINE ---
+    // 1. Limpiamos cualquier "basura" que haya quedado en el celu
+    db.clearPersistence().catch(() => {});
+    // 2. Desactivamos la persistencia para que no guarde cache nunca más
     db.settings({
-        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
+        persistence: false 
     });
+    // ---------------------------------------
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -2971,18 +2977,38 @@
                                     </div>
                                     <div className="mt-6">
                                         <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
-                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
+                                            <input 
+                                                name="notificationsEnabled" 
+                                                type="checkbox" 
+                                                defaultChecked={profile.config?.notificationsEnabled !== false} 
+                                                className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
                                                 onChange={async (e) => {
-                                                    if (!e.target.checked) return;
-                                                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                                                    if (isIOS) {
-                                                        // Safari/iOS bloquea permisos si no nacen de un gesto: solo guardamos la preferencia
-                                                        return;
+                                                    const isChecked = e.target.checked;
+                                                    
+                                                    // 1. Si lo activan, pedimos permiso (solo en Android/PC, iOS es manual)
+                                                    if (isChecked) {
+                                                        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                                                        if (!isIOS) {
+                                                            const granted = await requestNotificationPermission().catch(() => false);
+                                                            if (!granted) {
+                                                                e.target.checked = false;
+                                                                setToast({ type: 'error', message: 'Permiso de notificaciones denegado en el navegador.' });
+                                                                return;
+                                                            }
+                                                        }
                                                     }
-                                                    // Android / desktop: pedimos permiso nativo en respuesta al clic real del usuario
-                                                    const granted = await requestNotificationPermission().catch(() => false);
-                                                    if (!granted) {
-                                                        e.target.checked = false;
+                                                    // 2. GUARDADO INSTANTÁNEO: Así no tenés que esperar a "Guardar Cambios"
+                                                    try {
+                                                        await db.collection("professionals").doc(user.uid).update({
+                                                            "config.notificationsEnabled": isChecked
+                                                        });
+                                                        setToast({ 
+                                                            type: 'success', 
+                                                            message: isChecked ? '🔔 Notificaciones activadas' : '🔕 Notificaciones desactivadas' 
+                                                        });
+                                                    } catch (err) {
+                                                        setToast({ type: 'error', message: 'Error al actualizar preferencia.' });
+                                                        e.target.checked = !isChecked; // Revertimos el check si falló
                                                     }
                                                 }}
                                             />
