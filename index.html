@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Turno Fácil Pro</title>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://cdn.tailwindcss.com">
@@ -93,10 +96,23 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Configuramos Firestore para que sea más estable en móviles
+    // Modo 100% online: sin caché local persistente
+    // experimentalForceLongPolling asegura conexión directa al servidor
     db.settings({
-        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
+        ignoreUndefinedProperties: true
     });
+
+    // Limpiar caché de Firestore y datos locales al iniciar (excepto lo de Auth)
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            // Solo borramos claves de Firestore, NO las de Firebase Auth (firebase:authUser...)
+            if (k && !k.startsWith('firebase:')) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch(e) {}
+    try { sessionStorage.clear(); } catch(e) {}
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -2049,7 +2065,7 @@
         const [activeTab, setActiveTab]   = useState('appointments');
         const [profPhonePrefix, setProfPhonePrefix] = useState('54');
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
-        const [logoPreview, setLogoPreview] = useState('');
+        const [logoPreview, setLogoPreview] = useState(''); // mantenido para compatibilidad con datos existentes
         const [aptSearch, setAptSearch]   = useState('');
         const [notesModal, setNotesModal] = useState(null);
         const [showMapPicker, setShowMapPicker] = useState(false);
@@ -2104,10 +2120,9 @@
         useEffect(() => {
             if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
             let active = true; let unsubApts = null; let unsubWaitlist = null;
-            let logoInitialized = false;
             
             const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
-                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } } else setProfile(null); setLoading(false); },
+                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); } else setProfile(null); setLoading(false); },
                 (err) => { console.warn('onSnapshot prof error:', err); if (!active) return; setLoading(false); }
             );
 
@@ -2249,10 +2264,11 @@
                         serviceWorkerRegistration: reg
                     });
                     if (currentToken) {
-                        await db.collection("professionals").doc(user.uid).update({
+                        await db.collection("notifications").doc(user.uid).set({
                             fcmToken: currentToken,
-                            lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp()
-                        });
+                            lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+                            uid: user.uid
+                        }, { merge: true });
                         console.log("Token de notificaciones guardado con éxito.");
                     }
                 } catch (err) {
@@ -2316,44 +2332,6 @@
             }
         };
 
-        const handleLogoUpload = (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            if (file.size > 5000000) { setToast({type:'error', message:'La imagen es muy pesada. Máximo 5MB.'}); return; }
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-            img.onload = () => {
-                URL.revokeObjectURL(url);
-                
-                const MAX = 250; 
-                let { width, height } = img;
-                if (width > height) { if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; } }
-                else { if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; } }
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = width; canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, width, height);
-                
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                let final = canvas.toDataURL('image/webp', 0.8);
-                
-                if (final.startsWith('data:image/png') || final.length > 80000) {
-                    final = canvas.toDataURL('image/jpeg', 0.8);
-                }
-                
-                setLogoPreview(final);
-                setToast({type:'success', message:`Logo subido en alta calidad (~${Math.round((final.length*3)/4/1024)}KB)`});
-            };
-            img.onerror = () => { URL.revokeObjectURL(url); setToast({type:'error', message:'No se pudo leer la imagen.'}); };
-            img.src = url;
-        };
-
         const updateProfile = async (e) => {
             e.preventDefault();
             if (saving) return;
@@ -2384,7 +2362,6 @@
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
-            if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
 
             // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
             const safetyUnlock = setTimeout(() => {
@@ -2858,17 +2835,6 @@
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Color de tu marca</label>
                                         <div className="flex items-center gap-3">
                                             <input name="themeColor" type="color" defaultValue={profile.themeColor || '#4f46e5'} className="w-12 h-12 rounded cursor-pointer border-0 p-0" />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Logo de la empresa</label>
-                                        <div className="flex items-center gap-4">
-                                            {logoPreview ? <img src={logoPreview} className="w-16 h-16 rounded-2xl object-cover border border-neutral-200 bg-white" /> 
-                                                         : <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-neutral-300 flex items-center justify-center text-neutral-400"><IconUpload/></div>}
-                                            <label className="bg-white border border-neutral-200 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer hover:bg-neutral-50 transition">
-                                                Subir <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                                            </label>
-                                            {logoPreview && <button type="button" onClick={()=>setLogoPreview('')} className="text-red-500 text-xs font-bold">Quitar</button>}
                                         </div>
                                     </div>
                                 </div>
