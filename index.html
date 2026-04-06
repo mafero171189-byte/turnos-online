@@ -2,10 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Turno Fácil Pro</title>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://cdn.tailwindcss.com">
@@ -95,12 +92,11 @@
     
     const auth = firebase.auth();
     const db = firebase.firestore();
-    // MODO 100% ONLINE: Prohibimos el uso de disco local
+
+    // Configuramos Firestore para que sea más estable en móviles
     db.settings({
-        persistence: false 
+        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
     });
-    // Limpieza de restos en segundo plano (no bloquea el arranque)
-    db.clearPersistence().catch(() => {});
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -2243,15 +2239,10 @@
             const setupNotifications = async () => {
                 if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
                 try {
+                    // Verificamos si YA tenemos permiso. Si no lo tenemos, cortamos acá sin lanzar el cartel.
                     if (Notification.permission !== 'granted') return;
                     
-                    // Intentamos registrar con ruta relativa para GitHub Pages
-                    const reg = await navigator.serviceWorker.register('./firebase-messaging-sw.js')
-                        .catch(err => {
-                            console.warn("Archivo sw.js no encontrado, notificaciones en segundo plano desactivadas.");
-                            return null; 
-                        });
-                    if (!reg) return; // Si no hay archivo, salimos sin tirar error crítico
+                    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
                     const messaging = firebase.messaging();
                     const currentToken = await messaging.getToken({ 
                         vapidKey: 'BOY2dXXwiwxQ2bIv6B2bMT0hxBI72ZiDMU45Sm39uoNMLbokZS4yGHMTwxi1l6pkza0n9puy1sPTKBJSsbLZfEU',
@@ -2262,9 +2253,10 @@
                             fcmToken: currentToken,
                             lastTokenUpdate: firebase.firestore.FieldValue.serverTimestamp()
                         });
+                        console.log("Token de notificaciones guardado con éxito.");
                     }
                 } catch (err) {
-                    console.warn("Aviso: Notificaciones push no configuradas.");
+                    console.warn("Error al configurar notificaciones push:", err);
                 }
             };
             if (profile && !profile.isSuspended) {
@@ -2377,53 +2369,38 @@
         };
 
         const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
-            // Datos livianos: enviamos solo lo necesario
-            const updateData = {
-                name: f.get('name'),
-                business: f.get('business'),
-                service: f.get('service'),
+            const newData = {
+                name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
-                phone: buildPhone(f.get('phonePrefix'), local),
-                waTemplate: f.get('waTemplate'),
-                address: addressInput.trim(),
-                addressLat: addressLat,
-                addressLng: addressLng,
-                themeColor: f.get('themeColor'),
-                slug: slug || '',
+                phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
+                address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
+                themeColor: f.get('themeColor'), slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
-                // Notación de puntos = velocidad total en Firebase
-                "config.workingDays": workingDays,
-                "config.startTime": f.get('startTime'),
-                "config.endTime": f.get('endTime'),
-                "config.duration": newDuration,
-                "config.maxPerDay": Number(f.get('maxPerDay')||0)
+                config: {
+                    workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'),
+                    duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0),
+                    blockedDates: profile.config?.blockedDates || [],
+                    notificationsEnabled: f.get('notificationsEnabled') === 'on'
+                }
             };
-            // Filtro inteligente para el logo
-            if (logoPreview && logoPreview.startsWith('data:image') && logoPreview !== profile.logoBase64) {
-                updateData.logoBase64 = logoPreview;
-            }
+            if (logoPreview !== profile.logoBase64) newData.logoBase64 = logoPreview;
+
+            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
             const safetyUnlock = setTimeout(() => {
-                setSaving(false);
-                setToast({ type:'error', message: 'Conexión lenta. Intentá de nuevo.' });
-            }, 15000);
+    setSaving(false);
+    setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
+}, 12000); // <-- Cambiado a 12 segundos (12000)
+
             try {
-                // .update() es mucho más liviano que .set()
-                await db.collection("professionals").doc(user.uid).update(updateData);
-                
+                await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
                 clearTimeout(safetyUnlock);
-                
-                // Actualizamos React manualmente para que los checks cambien al toque
-                setProfile(prev => ({ 
-                    ...prev, 
-                    ...updateData,
-                    config: { ...prev.config, workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'), duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0) }
-                }));
-                
-                setToast({ type:'success', message:'¡Guardado correctamente! 🚀' });
+                setProfile(prev => ({ ...prev, ...newData }));
+                setToast({ type:'success', message:'¡Guardado con éxito!' });
             } catch (err) {
                 clearTimeout(safetyUnlock);
-                setToast({ type:'error', message: 'Error al guardar.' });
+                console.error(err);
+                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
             } finally {
                 setSaving(false);
             }
@@ -2994,39 +2971,18 @@
                                     </div>
                                     <div className="mt-6">
                                         <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
-                                            <input 
-                                                name="notificationsEnabled" 
-                                                type="checkbox" 
-                                                defaultChecked={profile.config?.notificationsEnabled === true} 
-                                                className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
+                                            <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
                                                 onChange={async (e) => {
-                                                    const isChecked = e.target.checked;
-                                                    
-                                                    // 1. Solo pedimos permiso al navegador si el usuario activa el check
-                                                    if (isChecked) {
-                                                        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                                                        if (!isIOS) {
-                                                            // Esta función lanza el cartel nativo del navegador (Chrome/Android)
-                                                            const granted = await requestNotificationPermission().catch(() => false);
-                                                            if (!granted) {
-                                                                e.target.checked = false;
-                                                                setToast({ type: 'error', message: 'Permiso de notificaciones denegado.' });
-                                                                return;
-                                                            }
-                                                        }
+                                                    if (!e.target.checked) return;
+                                                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                                                    if (isIOS) {
+                                                        // Safari/iOS bloquea permisos si no nacen de un gesto: solo guardamos la preferencia
+                                                        return;
                                                     }
-                                                    // 2. Guardado instantáneo 100% Online (sin depender del botón "Guardar Cambios")
-                                                    try {
-                                                        await db.collection("professionals").doc(user.uid).update({
-                                                            "config.notificationsEnabled": isChecked
-                                                        });
-                                                        setToast({ 
-                                                            type: 'success', 
-                                                            message: isChecked ? '🔔 Notificaciones activadas' : '🔕 Notificaciones desactivadas' 
-                                                        });
-                                                    } catch (err) {
-                                                        setToast({ type: 'error', message: 'Error de conexión con el servidor.' });
-                                                        e.target.checked = !isChecked; // Revertimos el check si falla la red
+                                                    // Android / desktop: pedimos permiso nativo en respuesta al clic real del usuario
+                                                    const granted = await requestNotificationPermission().catch(() => false);
+                                                    if (!granted) {
+                                                        e.target.checked = false;
                                                     }
                                                 }}
                                             />
