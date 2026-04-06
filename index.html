@@ -96,23 +96,10 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Activamos persistencia offline SOLO para que las escrituras sean confiables y rápidas.
-    // Los datos del servidor siempre se priorizan sobre el caché.
-    db.enablePersistence({ synchronizeTabs: false }).catch(err => {
-        // Si falla (ej: múltiples pestañas), seguimos en modo online normal
-        console.warn('Persistencia no disponible:', err.code);
+    // Configuramos Firestore para que sea más estable en móviles
+    db.settings({
+        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
     });
-
-    // Limpiar datos locales que NO sean de Firebase al iniciar
-    try {
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && !k.startsWith('firebase:')) keysToRemove.push(k);
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch(e) {}
-    try { sessionStorage.clear(); } catch(e) {}
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -686,7 +673,7 @@
                         setView('client'); 
                     } else {
                         try {
-                            const snap = await db.collection("professionals").where("slug", "==", p).limit(1).get({ source: 'server' });
+                            const snap = await db.collection("professionals").where("slug", "==", p).limit(1).get();
                             if (!snap.empty) {
                                 setProfId(snap.docs[0].id);
                                 setView('client');
@@ -2065,7 +2052,7 @@
         const [activeTab, setActiveTab]   = useState('appointments');
         const [profPhonePrefix, setProfPhonePrefix] = useState('54');
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
-        const [logoPreview, setLogoPreview] = useState(''); // mantenido para compatibilidad con datos existentes
+        const [logoPreview, setLogoPreview] = useState('');
         const [aptSearch, setAptSearch]   = useState('');
         const [notesModal, setNotesModal] = useState(null);
         const [showMapPicker, setShowMapPicker] = useState(false);
@@ -2120,9 +2107,10 @@
         useEffect(() => {
             if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
             let active = true; let unsubApts = null; let unsubWaitlist = null;
+            let logoInitialized = false;
             
             const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
-                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); } else setProfile(null); setLoading(false); },
+                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } } else setProfile(null); setLoading(false); },
                 (err) => { console.warn('onSnapshot prof error:', err); if (!active) return; setLoading(false); }
             );
 
@@ -2363,13 +2351,21 @@
                 }
             };
 
+            // 2. Creamos un "seguro" que destraba el botón sí o sí a los 23 segundos
+            const safetyUnlock = setTimeout(() => {
+    setSaving(false);
+    setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
+}, 12000); // <-- Cambiado a 12 segundos (12000)
+
             try {
                 await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
+                clearTimeout(safetyUnlock);
                 setProfile(prev => ({ ...prev, ...newData }));
                 setToast({ type:'success', message:'¡Guardado con éxito!' });
             } catch (err) {
+                clearTimeout(safetyUnlock);
                 console.error(err);
-                setToast({ type:'error', message: 'Error al guardar. Revisá tu conexión y reintentá.' });
+                setToast({ type:'error', message: 'Error al guardar. Reintentá.' });
             } finally {
                 setSaving(false);
             }
@@ -2822,7 +2818,7 @@
                         <div className="bg-white p-8 rounded-4xl shadow-sm border border-neutral-100">
                             <h2 className="text-xl font-semibold mb-6 flex items-center gap-2"><IconSettings /> Personalización y Perfil</h2>
                             <form onSubmit={updateProfile} className="space-y-6">
-                                <div className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+                                <div className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl grid grid-cols-1 gap-6 items-center">
                                     <div>
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Color de tu marca</label>
                                         <div className="flex items-center gap-3">
@@ -3085,8 +3081,8 @@
                 setLoadingSlots(true);
                 const nowMs = Date.now();
                 Promise.all([
-                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' }),
-                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get({ source: 'server' })
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
                 ]).then(([aptsSnap, holdsSnap]) => {
                     if (!active) return;
                     const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
