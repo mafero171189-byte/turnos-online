@@ -647,16 +647,20 @@
         const [globalSettings, setGlobalSettings] = useState(null);
         const [paymentSettings, setPaymentSettings] = useState(null);
 
-        useEffect(() => {
-            const unsubSettings = db.collection('settings').doc('global').onSnapshot(doc => {
-                if(doc.exists) setGlobalSettings(doc.data());
-                else setGlobalSettings({});
-            });
-            const unsubPayment = db.collection('settings').doc('payment').onSnapshot(doc => {
-                if(doc.exists) setPaymentSettings(doc.data());
-                else setPaymentSettings({ mpPrice: '5000', paypalPrice: '15' });
-            });
-            return () => { unsubSettings(); unsubPayment(); };
+                  useEffect(() => {
+            const loadSettings = async () => {
+                try {
+                    const [globalDoc, paymentDoc] = await Promise.all([
+                        db.collection('settings').doc('global').get(),
+                        db.collection('settings').doc('payment').get()
+                    ]);
+                    if(globalDoc.exists) setGlobalSettings(globalDoc.data());
+                    else setGlobalSettings({});
+                    if(paymentDoc.exists) setPaymentSettings(paymentDoc.data());
+                    else setPaymentSettings({ mpPrice: '5000', paypalPrice: '15' });
+                } catch (e) { console.error("Error cargando settings:", e); }
+            };
+            loadSettings();
         }, []);
 
         useEffect(() => {
@@ -2105,11 +2109,19 @@
             if (!user || user.isAnonymous) { setLoading(false); setProfile(null); return; }
             let active = true; let unsubApts = null; let unsubWaitlist = null;
             let logoInitialized = false;
-            
-            const unsubProf = db.collection("professionals").doc(user.uid).onSnapshot(
-                (d) => { if (!active) return; if (d.exists) { setProfile(d.data()); if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } } else setProfile(null); setLoading(false); },
-                (err) => { console.warn('onSnapshot prof error:', err); if (!active) return; setLoading(false); }
-            );
+
+            const loadProfOnce = async () => {
+                try {
+                    const d = await db.collection("professionals").doc(user.uid).get();
+                    if (!active) return;
+                    if (d.exists) { 
+                        setProfile(d.data()); 
+                        if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } 
+                    } else { setProfile(null); }
+                    setLoading(false);
+                } catch (err) { console.warn('Error profile:', err); if (active) setLoading(false); }
+            };
+            loadProfOnce();
 
             unsubWaitlist = db.collection("waitlists").where("profId", "==", user.uid).onSnapshot(snap => {
                 if(!active) return;
@@ -2119,10 +2131,7 @@
 
             const subscribeApts = () => {
                 if (!active) return;
-                
-                // Ahora solo escuchamos turnos de HOY en adelante. Ahorro masivo de cuota.
                 const minDate = getTodayStr();
-
                 unsubApts = db.collection("appointments")
                     .where("profId","==",user.uid)
                     .where("date", ">=", minDate)
@@ -2156,19 +2165,19 @@
                             const notifsEnabled = profileConfigRef.current?.notificationsEnabled !== false; 
                             const prevMap = prevAptsRef.current;
                             
-                                                        all.forEach(apt => {
+                            all.forEach(apt => {
                                 const prev = prevMap.get(apt.id);
                                 if (notifsEnabled) {
                                     if (!prev && !apt.cancelled && !apt.addedManually) {
                                         const msg = `${apt.client} agendó para el ${formatDate(apt.date)} a las ${apt.time}hs.`;
-                                        showNotification('¡Nuevo turno reservado!', msg); // Notificación del sistema operativo
-                                        setToast({ type: 'success', message: `¡NUEVO TURNO! ${msg}` }); // Cartel flotante dentro de la app
+                                        showNotification('¡Nuevo turno reservado!', msg); 
+                                        setToast({ type: 'success', message: `¡NUEVO TURNO! ${msg}` }); 
                                         playSound = true;
                                     }
                                     else if (prev && !prev.cancelled && apt.cancelled && (apt.cancelledBy === 'client' || apt.cancelledBy === 'client_reschedule')) {
                                         const msg = `${apt.client} canceló su turno del ${formatDate(apt.date)} a las ${apt.time}hs.`;
-                                        showNotification('Turno cancelado', msg); // Notificación del sistema operativo
-                                        setToast({ type: 'error', message: `¡TURNO CANCELADO! ${msg}` }); // Cartel flotante dentro de la app (en rojo)
+                                        showNotification('Turno cancelado', msg); 
+                                        setToast({ type: 'error', message: `¡TURNO CANCELADO! ${msg}` }); 
                                         playSound = true;
                                     }
                                 }
@@ -2189,7 +2198,7 @@
             let lastMinute = new Date().getMinutes();
             const minuteTimer = setInterval(() => {
                 const now = new Date();
-                if (now.getMinutes() === lastMinute) return; // Si no cambió el minuto, no hacemos nada
+                if (now.getMinutes() === lastMinute) return; 
                 lastMinute = now.getMinutes();
                 if (!active || allAptsRef.current.length === 0) return;
                 const today = getTodayStr();
@@ -2206,9 +2215,12 @@
                     return a.date.localeCompare(b.date) || a.time.localeCompare(b.time);
                 }));
                 setPastApts(all.filter(a => isPastNow(a) && !a.cancelled).sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)));
-            }, 30000); // Chequeamos cada 30 seg pero solo actualizamos al cambiar el minuto
-            return () => { active = false; clearInterval(minuteTimer); try { unsubProf(); } catch(e){} if (unsubApts) unsubApts(); if (unsubWaitlist) unsubWaitlist(); };
+            }, 30000); 
+
+            return () => { active = false; clearInterval(minuteTimer); if (unsubApts) unsubApts(); if (unsubWaitlist) unsubWaitlist(); };
         }, [user]);
+
+
 
         const phoneSynced = useRef(false);
         useEffect(() => {
@@ -3054,18 +3066,19 @@
                     setProfExpired(true);
                 }
             };
-            const unsub = db.collection("professionals").doc(profId).onSnapshot(handleSnap, () => setProfExpired(true));
-            // Forzar re-fetch desde el servidor cuando el usuario vuelve a la página
-            // (el onSnapshot puede quedar desconectado en mobile al ir a segundo plano)
+
+            const fetchProfOnce = () => {
+                db.collection("professionals").doc(profId).get()
+                    .then(handleSnap)
+                    .catch(() => setProfExpired(true));
+            };
+            fetchProfOnce();
+
             const handleVisibility = () => {
-                if (document.visibilityState === 'visible') {
-                    db.collection("professionals").doc(profId).get({ source: 'server' })
-                        .then(handleSnap)
-                        .catch(() => {});
-                }
+                if (document.visibilityState === 'visible') fetchProfOnce();
             };
             document.addEventListener('visibilitychange', handleVisibility);
-            return () => { unsub(); document.title = prevTitle; document.removeEventListener('visibilitychange', handleVisibility); };
+            return () => { document.title = prevTitle; document.removeEventListener('visibilitychange', handleVisibility); };
         }, [profId]);
 
         useEffect(() => {
