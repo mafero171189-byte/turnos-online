@@ -648,19 +648,29 @@
         const [paymentSettings, setPaymentSettings] = useState(null);
 
                   useEffect(() => {
-            const loadSettings = async () => {
-                try {
-                    const [globalDoc, paymentDoc] = await Promise.all([
-                        db.collection('settings').doc('global').get(),
-                        db.collection('settings').doc('payment').get()
-                    ]);
-                    if(globalDoc.exists) setGlobalSettings(globalDoc.data());
+            // Escuchar settings globales en tiempo real
+            const unsubGlobal = db.collection('settings').doc('global').onSnapshot(
+                doc => {
+                    if(doc.exists) setGlobalSettings(doc.data());
                     else setGlobalSettings({});
-                    if(paymentDoc.exists) setPaymentSettings(paymentDoc.data());
+                },
+                error => console.error("Error global settings:", error)
+            );
+
+            // Escuchar settings de pagos en tiempo real
+            const unsubPayment = db.collection('settings').doc('payment').onSnapshot(
+                doc => {
+                    if(doc.exists) setPaymentSettings(doc.data());
                     else setPaymentSettings({ mpPrice: '5000', paypalPrice: '15' });
-                } catch (e) { console.error("Error cargando settings:", e); }
+                },
+                error => console.error("Error payment settings:", error)
+            );
+
+            // Limpieza al desmontar el componente
+            return () => {
+                unsubGlobal();
+                unsubPayment();
             };
-            loadSettings();
         }, []);
 
         useEffect(() => {
