@@ -3712,5 +3712,108 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<ErrorBoundary><App /></ErrorBoundary>);
 </script>
+
+<script>
+// ==========================================
+// INSTALACIÓN PWA - TURNO FÁCIL PRO
+// ==========================================
+(function() {
+    // 1. Manifest dinámico
+    const manifestJSON = {
+        "name": "Turno Fácil Pro",
+        "short_name": "Turno Fácil",
+        "start_url": location.href,
+        "display": "standalone",
+        "background_color": "#1e1b4b",
+        "theme_color": "#4f46e5",
+        "icons": [{
+            "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231e1b4b'/><text x='50' y='50' font-size='55' text-anchor='middle' dy='.35em'>📅</text></svg>",
+            "sizes": "512x512",
+            "type": "image/svg+xml"
+        }]
+    };
+    const blobManifest = new Blob([JSON.stringify(manifestJSON)], {type: 'application/json'});
+    document.head.insertAdjacentHTML('beforeend', `<link rel="manifest" href="${URL.createObjectURL(blobManifest)}">`);
+
+    // 2. Service Worker dinámico
+    const swCode = "self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('fetch', e => {});";
+    const blobSW = new Blob([swCode], {type: 'application/javascript'});
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register(URL.createObjectURL(blobSW)).catch(() => {});
+    }
+
+    // 3. Modal flotante
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes tfModalEntrada { from { opacity:0; transform:scale(0.85) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        #tf-modal-overlay { display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px; box-sizing:border-box; }
+        #tf-modal-inner { background:#1e1b4b; border:1px solid rgba(99,102,241,0.4); border-radius:24px; padding:32px 28px 24px; max-width:340px; width:100%; text-align:center; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.6); animation:tfModalEntrada 0.3s ease; }
+        #tf-btn-instalar { display:block; width:100%; background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border:none; padding:14px; border-radius:14px; font-weight:900; cursor:pointer; font-size:1rem; letter-spacing:0.5px; box-shadow:0 4px 15px rgba(79,70,229,0.4); font-family:'Inter',sans-serif; }
+        #tf-btn-cerrar { position:absolute; top:14px; right:14px; background:rgba(255,255,255,0.08); color:#94a3b8; border:none; font-size:1rem; cursor:pointer; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+    `;
+    document.head.appendChild(style);
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="tf-modal-overlay">
+            <div id="tf-modal-inner">
+                <button id="tf-btn-cerrar">✕</button>
+                <div style="font-size:3rem;margin-bottom:10px;">📅</div>
+                <h3 style="margin:0 0 8px 0;color:#818cf8;font-size:1.2rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;">Turno Fácil Pro</h3>
+                <p style="margin:0 0 20px 0;font-size:0.92rem;color:#cbd5e1;line-height:1.5;">Instalá la app en tu celular para acceder más rápido, sin abrir el navegador.</p>
+                <button id="tf-btn-instalar">📲 Instalar ahora</button>
+                <p style="margin:12px 0 0 0;font-size:0.75rem;color:#64748b;">No ocupa espacio extra en tu teléfono</p>
+            </div>
+        </div>
+    `);
+
+    // 4. Lógica
+    const PWA_KEY = 'tfp_pwa_estado';
+    const overlay = document.getElementById('tf-modal-overlay');
+    const btnInstalar = document.getElementById('tf-btn-instalar');
+    const btnCerrar = document.getElementById('tf-btn-cerrar');
+
+    // Reset via URL: ?reset-pwa
+    if (new URLSearchParams(location.search).has('reset-pwa')) {
+        localStorage.removeItem(PWA_KEY);
+    }
+
+    function esMobile() {
+        return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
+            || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+    }
+    function yaInstalada() {
+        return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    }
+    function debeMostrar() {
+        return esMobile() && !yaInstalada() && !localStorage.getItem(PWA_KEY);
+    }
+
+    let eventoInstalacion = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        eventoInstalacion = e;
+        if (debeMostrar()) overlay.style.display = 'flex';
+    });
+
+    btnInstalar.addEventListener('click', async () => {
+        if (!eventoInstalacion) return;
+        eventoInstalacion.prompt();
+        const { outcome } = await eventoInstalacion.userChoice;
+        overlay.style.display = 'none';
+        if (outcome === 'accepted') localStorage.setItem(PWA_KEY, 'instalada');
+        eventoInstalacion = null;
+    });
+
+    btnCerrar.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        localStorage.setItem(PWA_KEY, 'descartada');
+    });
+
+    window.addEventListener('appinstalled', () => {
+        overlay.style.display = 'none';
+        localStorage.setItem(PWA_KEY, 'instalada');
+    });
+})();
+</script>
 </body>
 </html>
