@@ -775,44 +775,15 @@
                     expirationDate.setDate(expirationDate.getDate() + 30);
                     try {
                         await db.collection("professionals").doc(res.user.uid).set({
-                            name: e.target.name.value, 
-                            business: e.target.business.value,
-                            service: e.target.service.value, 
-                            price: '', 
-                            phone: fullPhone, 
-                            email: e.target.email.value,
+                            name: e.target.name.value, business: e.target.business.value,
+                            service: e.target.service.value, price: '', phone: fullPhone, email: e.target.email.value,
                             waTemplate: DEFAULT_WA_TEMPLATE,
                             licenseExpiresAt: expirationDate.toISOString(),
                             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                             subscriptionStatus: 'trial', 
                             isSuspended: false,
-                            themeColor: '#4f46e5', 
-                            logoBase64: '', 
-                            slug: '',
-                            paymentMethod: 'mercadopago',
-                            bankAlias: '',
-                            // Configuración global del negocio
-                            config: { 
-                                blockedDates: [], 
-                                notificationsEnabled: true 
-                            },
-                            // NUEVA ESTRUCTURA: Array de consultorios
-                            locations: [
-                                {
-                                    id: "loc_" + Date.now(),
-                                    name: "Consultorio Principal",
-                                    address: "",
-                                    addressLat: null,
-                                    addressLng: null,
-                                    config: { 
-                                        workingDays: [1,2,3,4,5], 
-                                        startTime: '09:00', 
-                                        endTime: '18:00', 
-                                        duration: 30, 
-                                        maxPerDay: 0 
-                                    }
-                                }
-                            ]
+                            themeColor: '#4f46e5', logoBase64: '', slug: '',
+                            config: { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, maxPerDay:0, blockedDates:[], notificationsEnabled: true }
                         });
                         setToast({ type:'success', message: 'Cuenta creada con éxito' });
                     } catch(dbErr) {
@@ -1636,8 +1607,6 @@
     }
     // ===================== ADD APPOINTMENT MODAL (PROFESSIONAL) =====================
     function AddAppointmentModal({ profId, profile, setToast, onClose }) {
-        const locs = profile?.locations || [];
-        const [selLocId, setSelLocId]     = useState(locs.length > 0 ? locs[0].id : null);
         const [selDate, setSelDate]       = useState('');
         const [selTime, setSelTime]       = useState('');
         const [bookedTimes, setBookedTimes] = useState([]);
@@ -1647,46 +1616,41 @@
         const [manualPhone,  setManualPhone]  = useState('');
 
         const today = getTodayStr();
-        const activeLoc = locs.find(l => l.id === selLocId) || locs[0];
 
         useEffect(() => {
-            if (!selDate || !activeLoc) return;
+            if (!selDate) return;
             let active = true;
             setSelTime('');
             setBookedTimes([]);
             setLoadingSlots(true);
-            db.collection("appointments").where("profId","==",profId).where("locationId","==",activeLoc.id).where("date","==",selDate).get()
+            db.collection("appointments").where("profId","==",profId).where("date","==",selDate).get()
                 .then(snap => { if (!active) return; setBookedTimes(snap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time)); setLoadingSlots(false); })
                 .catch(() => { if (!active) return; setBookedTimes([]); setLoadingSlots(false); });
             return () => { active = false; };
-        }, [selDate, activeLoc]);
+        }, [selDate]);
 
         let availableSlots = []; let isDayUnavailable = false; let isBlockedDay = false;
-        if (selDate && activeLoc?.config && !loadingSlots) {
-            const dayIsWorking = activeLoc.config.workingDays.includes(parseDateLocal(selDate).getDay());
-            isBlockedDay = (profile.config?.blockedDates||[]).includes(selDate);
+        if (selDate && profile?.config && !loadingSlots) {
+            const dayIsWorking = profile.config.workingDays.includes(parseDateLocal(selDate).getDay());
+            isBlockedDay = (profile.config.blockedDates||[]).includes(selDate);
             
-            const maxPerDay = activeLoc.config.maxPerDay || 0;
-            if (maxPerDay > 0 && bookedTimes.length >= maxPerDay) {
+            availableSlots = generateTimeSlots(profile.config.startTime, profile.config.endTime, profile.config.duration).filter(t => !bookedTimes.includes(t));
+            if (!dayIsWorking) {
                 isDayUnavailable = true;
-            } else {
-                availableSlots = generateTimeSlots(activeLoc.config.startTime, activeLoc.config.endTime, activeLoc.config.duration).filter(t => !bookedTimes.includes(t));
             }
-            if (!dayIsWorking) isDayUnavailable = true;
         }
 
         const handleSubmit = async (e) => {
             e.preventDefault();
-            if (!selDate || !selTime || !activeLoc) { setToast({ type:'error', message:'Completá todos los datos.' }); return; }
+            if (!selDate || !selTime) { setToast({ type:'error', message:'Elegí una fecha y un horario.' }); return; }
             const localClean = manualPhone.replace(/\D/g,'');
             if (localClean.length < 8) { setToast({ type:'error', message:'Ingresá un teléfono válido.' }); return; }
             setSaving(true);
             try {
-                const slotId  = `${profId}_${activeLoc.id}_${selDate}_${selTime.replace(':','-')}`;
+                const slotId  = `${profId}_${selDate}_${selTime.replace(':','-')}`;
                 const slotRef = db.collection("appointments").doc(slotId);
                 const aptData = {
-                    profId, locationId: activeLoc.id, locationName: activeLoc.name,
-                    date: selDate, time: selTime,
+                    profId, date: selDate, time: selTime,
                     client: e.target.manualClient.value.trim(),
                     dni: e.target.manualDni?.value || '',
                     phone: buildPhone(manualPrefix, manualPhone),
@@ -1702,7 +1666,7 @@
                     tx.set(slotRef, aptData);
                     tx.delete(holdRef);
                 });
-                setToast({ type:'success', message:'Turno agregado correctamente' });
+                setToast({ type:'success', message:'¡Turno agregado correctamente!' });
                 onClose();
             } catch (err) {
                 setToast({ type:'error', message: err.message || 'Error al guardar el turno.' });
@@ -1717,15 +1681,6 @@
                     <p className="text-sm text-neutral-500 mb-6">Reservá un turno en nombre de un cliente.</p>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {locs.length > 1 && (
-                            <div>
-                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Consultorio</label>
-                                <select value={selLocId} onChange={e => { setSelLocId(e.target.value); setSelDate(''); setSelTime(''); }} className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm font-medium focus:border-brand-600">
-                                    {locs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                </select>
-                            </div>
-                        )}
-
                         <div>
                             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Fecha</label>
                             <input type="date" min={today} value={selDate} onChange={e => { if (e.target.value) setSelDate(e.target.value); }}
@@ -1735,16 +1690,27 @@
                         {selDate && (
                             <div>
                                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Horario Disponible</label>
-                                {isBlockedDay && availableSlots.length > 0 && <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">⚠️ Día bloqueado para clientes, pero podés forzar el turno.</div>}
-                                {isDayUnavailable && availableSlots.length > 0 && <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">⚠️ Día no laborable en esta sucursal, pero podés forzar el turno.</div>}
+                                {isBlockedDay && availableSlots.length > 0 && (
+                                    <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                                        ⚠️ Este día está bloqueado para clientes, pero podés reservar igual como profesional.
+                                    </div>
+                                )}
+                                {isDayUnavailable && availableSlots.length > 0 && (
+                                    <div className="mb-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2">
+                                        ⚠️ Este día no es laborable según tu configuración, pero podés forzar el turno.
+                                    </div>
+                                )}
                                 {loadingSlots ? (
-                                    <div className="text-center py-4 text-sm text-neutral-400 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-center gap-2"><div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...</div>
+                                    <div className="text-center py-4 text-sm text-neutral-400 bg-neutral-50 rounded-2xl border border-neutral-200 flex items-center justify-center gap-2">
+                                        <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin"></div> Cargando horarios...
+                                    </div>
                                 ) : availableSlots.length === 0 ? (
-                                    <div className="text-center py-4 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200">😔 No hay turnos disponibles.</div>
+                                    <div className="text-center py-4 text-sm text-neutral-500 bg-neutral-50 rounded-2xl border border-neutral-200">😔 No hay turnos disponibles para este día.</div>
                                 ) : (
                                     <div className="grid grid-cols-4 gap-2 max-h-36 overflow-y-auto p-1 bg-neutral-50 border border-neutral-200 rounded-2xl">
                                         {availableSlots.map(t => (
-                                            <button type="button" key={t} onClick={() => setSelTime(t)} className={`py-2 rounded-xl text-sm font-semibold transition-all ${selTime===t ? 'bg-brand-600 text-white shadow-md' : 'bg-white text-neutral-700 border border-neutral-200 hover:border-brand-400'}`}>{t}</button>
+                                            <button type="button" key={t} onClick={() => setSelTime(t)}
+                                                className={`py-2 rounded-xl text-sm font-semibold transition-all ${selTime===t ? 'bg-brand-600 text-white shadow-md' : 'bg-white text-neutral-700 border border-neutral-200 hover:border-brand-400'}`}>{t}</button>
                                         ))}
                                     </div>
                                 )}
@@ -1753,10 +1719,22 @@
                         )}
 
                         <div className={`space-y-3 border-t border-neutral-100 pt-4 transition-all ${!selTime ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre y Apellido</label><input name="manualClient" maxLength="50" placeholder="Ej: Juan Pérez" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" required /></div>
-                            <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">DNI <span className="normal-case font-normal text-neutral-400">(opcional)</span></label><input name="manualDni" maxLength="15" placeholder="Sin puntos" inputMode="numeric" pattern="[0-9]*" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" /></div>
-                            <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label><PhoneInput namePrefix="manualPhonePrefix" nameLocal="manualPhoneLocal" prefix={manualPrefix} onPrefixChange={setManualPrefix} value={manualPhone} onChange={e => setManualPhone(e.target.value.replace(/\D/g,''))} placeholder="1122334455" required /></div>
-                            <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nota (opcional)</label><input name="manualNotes" maxLength="200" placeholder="Alguna observación..." className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" /></div>
+                            <div>
+                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre y Apellido</label>
+                                <input name="manualClient" maxLength="50" placeholder="Ej: Juan Pérez" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" required />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">DNI <span className="normal-case font-normal text-neutral-400">(opcional)</span></label>
+                                <input name="manualDni" maxLength="15" placeholder="Sin puntos" inputMode="numeric" pattern="[0-9]*" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">WhatsApp</label>
+                                <PhoneInput namePrefix="manualPhonePrefix" nameLocal="manualPhoneLocal" prefix={manualPrefix} onPrefixChange={setManualPrefix} value={manualPhone} onChange={e => setManualPhone(e.target.value.replace(/\D/g,''))} placeholder="1122334455" required />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nota (opcional)</label>
+                                <input name="manualNotes" maxLength="200" placeholder="Alguna observación..." className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-2xl outline-none text-sm focus:border-brand-600" />
+                            </div>
                         </div>
 
                         <button type="submit" disabled={saving || !selTime} className={`w-full py-4 rounded-2xl font-semibold text-white shadow-lg transition text-sm ${saving || !selTime ? 'bg-brand-300 cursor-not-allowed' : 'bg-brand-600 active:scale-[0.98] hover:bg-brand-700'}`}>
@@ -2087,7 +2065,6 @@
         const [profPhoneLocal,  setProfPhoneLocal]  = useState('');
         const [logoPreview, setLogoPreview] = useState('');
         const [aptSearch, setAptSearch]   = useState('');
-        const [adminLocFilter, setAdminLocFilter] = useState('all');
         const [notesModal, setNotesModal] = useState(null);
         const [showMapPicker, setShowMapPicker] = useState(false);
         const [addressInput, setAddressInput] = useState('');
@@ -2098,7 +2075,6 @@
         const [saving, setSaving] = useState(false);
         const [audioBlocked, setAudioBlocked] = useState(false); // NUEVO ESTADO PARA EL CARTEL DE AUDIO
         const [broadcastDismissed, setBroadcastDismissed] = useState(false);
-        const [locs, setLocs] = useState([]);
         const lastBroadcastRef = useRef('');
 
         useEffect(() => {
@@ -2149,8 +2125,7 @@
                     const d = await db.collection("professionals").doc(user.uid).get();
                     if (!active) return;
                     if (d.exists) { 
-                        setProfile(d.data());
-                        setLocs(d.data().locations || []); // NUEVO: Carga la lista de consultorios
+                        setProfile(d.data()); 
                         if (!logoInitialized) { setLogoPreview(d.data().logoBase64 || ''); logoInitialized = true; } 
                     } else { setProfile(null); }
                     setLoading(false);
@@ -2364,96 +2339,43 @@
             }
         };
 
-        // --- FUNCIONES PARA MANEJAR MÚLTIPLES CONSULTORIOS ---
-        const addLocation = () => {
-            setLocs([...locs, {
-                id: "loc_" + Date.now(),
-                name: "Nuevo Consultorio",
-                address: "", addressLat: null, addressLng: null,
-                config: { workingDays: [1,2,3,4,5], startTime: '09:00', endTime: '18:00', duration: 30, maxPerDay: 0 }
-            }]);
-        };
-        const removeLocation = async (id) => {
-            if (locs.length <= 1) { 
-                setToast({type:'error', message:'Debés tener al menos un consultorio activo.'}); 
-                return; 
-            }
-
-            const locToDelete = locs.find(l => l.id === id);
-
-            // 1. Iniciamos una consulta para ver si hay turnos activos a futuro en esta sede
-            setToast({ type: 'info', message: 'Verificando turnos pendientes...' });
-            
-            try {
-                const today = getTodayStr();
-                const snap = await db.collection("appointments")
-                    .where("profId", "==", user.uid)
-                    .where("locationId", "==", id)
-                    .where("date", ">=", today)
-                    .get();
-
-                // 2. Filtramos los que no estén cancelados
-                const turnosActivos = snap.docs.filter(d => !d.data().cancelled);
-
-                if (turnosActivos.length > 0) {
-                    // 3. Si hay turnos, bloqueamos la acción con un mensaje claro
-                    setDialog({
-                        type: 'alert',
-                        title: 'No se puede eliminar',
-                        message: `El consultorio "${locToDelete.name}" tiene ${turnosActivos.length} turno(s) pendientes. Para borrarlo, primero debés cancelar o reprogramar esos turnos desde la pestaña de Citas.`
-                    });
-                } else {
-                    // 4. Si no hay turnos, procedemos a eliminarlo de la lista
-                    setLocs(locs.filter(l => l.id !== id));
-                    setToast({ type: 'success', message: 'Consultorio quitado de la lista. Recordá Guardar Cambios.' });
-                }
-            } catch (err) {
-                console.error("Error al verificar turnos:", err);
-                setToast({ type: 'error', message: 'Error al verificar la agenda. Intentá de nuevo.' });
-            }
-        };
-        const updateLoc = (id, field, value) => {
-            setLocs(locs.map(l => l.id === id ? { ...l, [field]: value } : l));
-        };
-        const updateLocConfig = (id, field, value) => {
-            setLocs(locs.map(l => l.id === id ? { ...l, config: { ...l.config, [field]: value } } : l));
-        };
-        // --- NUEVA LÓGICA DE GUARDADO ---
         const updateProfile = async (e) => {
             e.preventDefault();
             if (saving) return;
             setSaving(true);
             const f = new FormData(e.target);
+            const workingDays = DAYS.filter(d => f.get(`day_${d.id}`)).map(d => d.id);
             const local = (f.get('phoneLocal') || '').replace(/\D/g,'');
             let slug = f.get('slug').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-            // Validamos que todos los consultorios tengan al menos un día seleccionado
-            for (let l of locs) {
-                if (!l.config.workingDays || l.config.workingDays.length === 0) {
-                    setToast({ type:'error', message:`Seleccioná al menos un día para ${l.name}.` });
-                    setSaving(false);
-                    return;
-                }
-            }
-            doSaveProfile(f, local, slug);
+
+            if (workingDays.length === 0) { setToast({ type:'error', message:'Seleccioná días.' }); setSaving(false); return; }
+            
+            doSaveProfile(f, workingDays, local, Number(f.get('duration')), slug);
         };
-        const doSaveProfile = async (f, local, slug) => {
+
+        const doSaveProfile = async (f, workingDays, local, newDuration, slug) => {
             const newData = {
                 name: f.get('name'), business: f.get('business'), service: f.get('service'),
                 price: f.get('price') || '',
                 phone: buildPhone(f.get('phonePrefix'), local), waTemplate: f.get('waTemplate'),
+                address: addressInput.trim(), addressLat: addressLat, addressLng: addressLng,
                 themeColor: f.get('themeColor'), slug: slug || '',
                 paymentMethod: f.get('paymentMethod') || 'mercadopago',
                 bankAlias: f.get('bankAlias') || '',
-                locations: locs, // ACÁ GUARDAMOS LA LISTA COMPLETA DE CONSULTORIOS
                 config: {
+                    workingDays, startTime: f.get('startTime'), endTime: f.get('endTime'),
+                    duration: newDuration, maxPerDay: Number(f.get('maxPerDay')||0),
                     blockedDates: profile.config?.blockedDates || [],
                     notificationsEnabled: f.get('notificationsEnabled') === 'on'
                 }
             };
+
+            // Seguro de 60s — si el servidor tarda más, algo está mal con la conexión
             const safetyUnlock = setTimeout(() => {
                 setSaving(false);
                 setToast({ type:'error', message: 'La conexión está lenta. Revisá tu internet.' });
             }, 60000);
+
             try {
                 await db.collection("professionals").doc(user.uid).set(newData, { merge: true });
                 clearTimeout(safetyUnlock);
@@ -2461,6 +2383,7 @@
                 setToast({ type:'success', message:'¡Guardado con éxito!' });
             } catch (err) {
                 clearTimeout(safetyUnlock);
+                console.error(err);
                 setToast({ type:'error', message: `Error: ${err.code || err.message}` });
             } finally {
                 setSaving(false);
@@ -2487,7 +2410,6 @@
         const renderAptCard = (a) => (
             <div key={a.id} className={`p-6 rounded-3xl shadow-sm border ${a.cancelled ? 'bg-red-50 border-red-200 opacity-80' : 'bg-white border-neutral-100'}`}>
                 <div className={`font-bold px-3 py-1.5 rounded-xl text-sm border inline-block mb-3 ${a.cancelled ? 'bg-red-100 text-red-700 border-red-200' : 'bg-brand-50 text-brand-700 border-brand-100'}`}>{formatDate(a.date)} · {a.time} hs</div>
-                {a.locationName && <span className="ml-2 text-xs font-bold text-neutral-700 bg-neutral-100 px-2 py-0.5 rounded-lg border border-neutral-200">🏥 {a.locationName}</span>}
                 {a.addedManually && !a.cancelled && <span className="ml-2 text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-lg border border-violet-200">Manual</span>}
                 {a.cancelled && <span className="ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-lg border border-red-200">❌ {a.cancelledBy === 'client' ? 'Cancelado por cliente' : a.cancelledBy === 'client_reschedule' ? 'Cancelado (reprogramó)' : a.cancelledBy === 'professional' ? 'Cancelado por vos' : 'Cancelado'}</span>}
                 <div className="font-bold text-neutral-950 uppercase text-lg">{a.client}</div>
@@ -2737,30 +2659,20 @@
                                 ➕ Agregar Turno
                             </button>
                         </div>
-                        
-                        <div className="flex flex-col sm:flex-row gap-3 mb-5">
-                            <div className="relative flex-1">
-                                <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400 pointer-events-none"><IconSearch /></div>
-                                <input type="text" placeholder="Buscar por nombre, DNI o teléfono..." value={aptSearch} onChange={e => setAptSearch(e.target.value)} className="w-full pl-12 pr-4 py-3.5 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 shadow-sm text-sm font-medium" />
-                            </div>
-                            {locs.length > 1 && (
-                                <select value={adminLocFilter} onChange={e => setAdminLocFilter(e.target.value)} className="p-3.5 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 shadow-sm text-sm font-medium sm:w-64">
-                                    <option value="all">Todas las sucursales</option>
-                                    {locs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                </select>
-                            )}
+                        <div className="relative mb-5">
+                            <div className="absolute inset-y-0 left-4 flex items-center text-neutral-400 pointer-events-none"><IconSearch /></div>
+                            <input type="text" placeholder="Buscar por nombre, DNI o teléfono..." value={aptSearch} onChange={e => setAptSearch(e.target.value)}
+                                className="w-full pl-12 pr-4 py-3.5 bg-white border border-neutral-200 rounded-2xl outline-none focus:border-brand-600 shadow-sm text-sm font-medium" />
                         </div>
-
                         <div className="space-y-6">
                             {(() => {
                                 const filtered = apts.filter(a => !a.cancelled).filter(a => {
-                                    if (adminLocFilter !== 'all' && a.locationId !== adminLocFilter) return false;
                                     if (!aptSearch.trim()) return true;
                                     const q = aptSearch.trim().toLowerCase();
                                     return (a.client||'').toLowerCase().includes(q) || (a.dni||'').includes(q) || (a.phone||'').includes(q);
                                 });
                                 if (filtered.length === 0) return (
-                                    <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{(aptSearch || adminLocFilter !== 'all') ? '🔍 Sin resultados para este filtro.' : 'No hay turnos agendados activos.'}</p>
+                                    <p className="col-span-full p-10 bg-white rounded-3xl text-center text-neutral-500 shadow-sm border border-neutral-100">{aptSearch ? '🔍 Sin resultados.' : 'No hay turnos agendados activos.'}</p>
                                 );
                                 const todayStr = getTodayStr();
                                 const todayApts    = filtered.filter(a => a.date === todayStr);
@@ -2938,26 +2850,9 @@
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Link personalizado</label>
                                         <div className="flex items-center">
                                             <span className="bg-neutral-100 border border-neutral-200 border-r-0 px-3 py-3.5 rounded-l-xl text-sm text-neutral-500 font-medium">misitio.com/?p=</span>
-                                            <input 
-                                                name="slug" 
-                                                maxLength="30" 
-                                                defaultValue={profile.slug || ''} 
-                                                placeholder="ej: mi-negocio" 
-                                                readOnly={!!profile.slug}
-                                                className={`w-full p-3.5 border border-neutral-200 rounded-r-xl text-sm outline-none transition-all ${profile.slug ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed font-medium' : 'bg-white focus:border-brand-600'}`} 
-                                            />
+                                            <input name="slug" maxLength="30" defaultValue={profile.slug || ''} placeholder="ej: mi-negocio" className="w-full p-3.5 bg-neutral-50 border border-neutral-200 rounded-r-xl text-sm outline-none focus:border-brand-600" />
                                         </div>
-                                        {profile.slug ? (
-                                            <div className="mt-2 flex items-start gap-2 text-amber-600">
-                                                <span className="text-sm">⚠️</span>
-                                                <p className="text-[10px] font-bold leading-tight">Link configurado. Por seguridad de tus clientes, este campo ya no se puede modificar. Si necesitás un cambio crítico, contactá a soporte técnico.</p>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-2 flex items-start gap-2 text-brand-600">
-                                                <span className="text-sm">💡</span>
-                                                <p className="text-[10px] font-bold leading-tight">Configurá bien tu link ahora (solo letras, números y guiones). Una vez que lo guardes, se bloqueará para siempre para asegurar que tus clientes nunca pierdan el acceso.</p>
-                                            </div>
-                                        )}
+                                        <p className="text-[10px] text-neutral-400 mt-1">Solo letras, números y guiones. Es más fácil de compartir en Instagram.</p>
                                     </div>
 
                                     <div><label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Nombre</label><input name="name" maxLength="50" defaultValue={profile.name} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" required /></div>
@@ -3016,90 +2911,37 @@
                                     </div>
                                     {/* ----------------------------- */}
 
-                                    {/* MANTENEMOS EL MENSAJE DE WHATSAPP GLOBAL */}
+                                    <div className="sm:col-span-2 mt-2">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Dirección <span className="normal-case font-normal text-neutral-400">(se muestra con link a Maps)</span></label>
+                                        <div className="flex gap-2">
+                                            <input name="address" maxLength="100" value={addressInput} onChange={e => {
+                                                setAddressInput(e.target.value);
+                                                setAddressLat(null);
+                                                setAddressLng(null);
+                                            }} placeholder="Ej: Av. Corrientes 1234" className="flex-1 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
+                                            <button type="button" onClick={() => setShowMapPicker(true)} className="px-4 py-3 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-sm font-semibold hover:bg-brand-100 active:scale-95 transition whitespace-nowrap flex items-center gap-1.5">🗺️ Mapa</button>
+                                        </div>
+                                    </div>
                                     <div className="sm:col-span-2 mt-2">
                                         <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1.5">Mensaje Automático de WhatsApp</label>
                                         <textarea name="waTemplate" maxLength="300" defaultValue={profile.waTemplate || DEFAULT_WA_TEMPLATE} rows="2" className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" placeholder="Ej: Hola {cliente}, te confirmo tu turno para el {fecha} a las {hora} en {negocio}."></textarea>
                                         <p className="text-[10px] text-neutral-400 mt-1">{'Variables automáticas permitidas: {cliente}, {fecha}, {hora}, {negocio}'}</p>
                                     </div>
-                                </div> {/* <-- CIERRE DEL GRID PRINCIPAL */}
-
-                                {/* --- NUEVA SECCIÓN: CONSULTORIOS DINÁMICOS --- */}
-                                <div className="border-t border-neutral-100 pt-6 mt-2">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <label className="block text-sm font-bold text-neutral-800 uppercase">Tus Consultorios / Locaciones</label>
-                                        <button type="button" onClick={addLocation} className="bg-brand-100 text-brand-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-brand-200 active:scale-95 transition flex items-center gap-1 shadow-sm">
-                                            ➕ Agregar Consultorio
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {locs.map((l, i) => (
-                                            <div key={l.id} className="p-5 bg-neutral-50 border border-neutral-200 rounded-3xl relative shadow-sm">
-                                                {locs.length > 1 && (
-                                                    <button type="button" onClick={() => removeLocation(l.id)} className="absolute top-5 right-5 text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-3 py-1.5 rounded-lg border border-red-100 transition active:scale-95">
-                                                        🗑️ Eliminar
-                                                    </button>
-                                                )}
-                                                <h4 className="font-bold text-brand-600 mb-4 flex items-center gap-2">🏥 Consultorio {i + 1}</h4>
-                                                
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-                                                    <div>
-                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1.5">Nombre (ej: Sede Centro)</label>
-                                                        <input value={l.name} onChange={e => updateLoc(l.id, 'name', e.target.value)} className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-semibold text-neutral-500 mb-1.5">Dirección exacta</label>
-                                                        <input value={l.address} onChange={e => updateLoc(l.id, 'address', e.target.value)} placeholder="Ej: Av. Corrientes 1234" className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required />
-                                                    </div>
-                                                </div>
-
-                                                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
-                                                <div className="flex flex-wrap gap-2 mb-4">
-                                                    {DAYS.map(d => (
-                                                        <label key={d.id} className="flex items-center gap-1.5 bg-white border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={l.config.workingDays.includes(d.id)} 
-                                                                onChange={e => {
-                                                                    const newDays = e.target.checked 
-                                                                        ? [...l.config.workingDays, d.id] 
-                                                                        : l.config.workingDays.filter(day => day !== d.id);
-                                                                    updateLocConfig(l.id, 'workingDays', newDays);
-                                                                }} 
-                                                                className="accent-brand-600" 
-                                                            />
-                                                            <span className="text-sm font-medium">{d.name}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-
-                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                                    <div>
-                                                        <label className="block text-xs text-neutral-500 mb-1">Desde</label>
-                                                        <input type="time" value={l.config.startTime} onChange={e => updateLocConfig(l.id, 'startTime', e.target.value)} className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs text-neutral-500 mb-1">Hasta</label>
-                                                        <input type="time" value={l.config.endTime} onChange={e => updateLocConfig(l.id, 'endTime', e.target.value)} className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" required />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs text-neutral-500 mb-1">Duración</label>
-                                                        <select value={l.config.duration} onChange={e => updateLocConfig(l.id, 'duration', Number(e.target.value))} className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600">
-                                                            <option value="15">15m</option><option value="30">30m</option><option value="60">1h</option>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs text-neutral-500 mb-1">Límite diario</label>
-                                                        <input type="number" min="0" value={l.config.maxPerDay} onChange={e => updateLocConfig(l.id, 'maxPerDay', Number(e.target.value))} className="w-full p-3 bg-white border border-neutral-200 rounded-xl text-sm outline-none focus:border-brand-600" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
-
                                 <div className="border-t border-neutral-100 pt-4 mt-2">
+                                    <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Días y Horarios</label>
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        {DAYS.map(d => (<label key={d.id} className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 px-3 py-2 rounded-xl cursor-pointer has-[:checked]:bg-brand-50 has-[:checked]:border-brand-300"><input name={`day_${d.id}`} type="checkbox" defaultChecked={(profile.config?.workingDays||[1,2,3,4,5]).includes(d.id)} className="accent-brand-600" /><span className="text-sm font-medium">{d.name}</span></label>))}
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Desde</label><input name="startTime" type="time" defaultValue={profile.config?.startTime||'09:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Hasta</label><input name="endTime" type="time" defaultValue={profile.config?.endTime||'18:00'} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm" /></div>
+                                        <div><label className="block text-xs text-neutral-500 mb-1">Duración</label><select name="duration" defaultValue={profile.config?.duration||30} className="w-full p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm"><option value="15">15m</option><option value="30">30m</option><option value="60">1h</option></select></div>
+                                    </div>
+                                    <div className="mt-4">
+                                        <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Límite de turnos por día (0 = sin límite)</label>
+                                        <input name="maxPerDay" type="number" min="0" max="100" defaultValue={profile.config?.maxPerDay||0} className="w-32 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-sm outline-none" />
+                                    </div>
                                     <div className="mt-6">
                                         <label className="flex items-start gap-3 cursor-pointer bg-neutral-50 border border-neutral-200 p-4 rounded-xl transition hover:bg-neutral-100">
                                             <input name="notificationsEnabled" type="checkbox" defaultChecked={profile.config?.notificationsEnabled !== false} className="w-5 h-5 mt-0.5 accent-brand-600 cursor-pointer"
@@ -3138,7 +2980,6 @@
     // ===================== CLIENT =====================
     function ClientView({ profId, setDialog, setToast }) {
         const [prof, setProf]               = useState(null);
-        const [activeLoc, setActiveLoc]     = useState(null); // NUEVO: Consultorio elegido
         const [sent, setSent]               = useState(null);
         const [selectedDate, setSelectedDate] = useState('');
         const [selectedTime, setSelectedTime] = useState('');
@@ -3227,29 +3068,19 @@
                     const data = d.data();
                     const daysLeft = getDaysLeft(data.licenseExpiresAt);
                     if (daysLeft <= 0 || data.isSuspended) { setProfExpired(true); return; }
-                    
+                    if (!data.config) data.config = { workingDays:[1,2,3,4,5], startTime:'09:00', endTime:'18:00', duration:30, maxPerDay:0, blockedDates:[] };
                     setProf(data);
                     if (data.themeColor) document.documentElement.style.setProperty('--custom-color', data.themeColor);
                     document.title = `Reservas - ${data.business}`;
-
-                    // NUEVO: Lógica de selección de consultorios
-                    if (data.locations && data.locations.length > 0) {
-                        const params = new URLSearchParams(window.location.search);
-                        const locParam = params.get('loc');
-                        if (locParam) {
-                            const found = data.locations.find(l => l.slug === locParam || l.id === locParam);
-                            if (found) setActiveLoc(found);
-                        } else if (data.locations.length === 1) {
-                            setActiveLoc(data.locations[0]); // Si tiene solo 1, lo elige automático
-                        }
-                    }
                 } else {
                     setProfExpired(true);
                 }
             };
 
             const fetchProfOnce = () => {
-                db.collection("professionals").doc(profId).get().then(handleSnap).catch(() => setProfExpired(true));
+                db.collection("professionals").doc(profId).get()
+                    .then(handleSnap)
+                    .catch(() => setProfExpired(true));
             };
             fetchProfOnce();
 
@@ -3261,7 +3092,7 @@
         }, [profId]);
 
         useEffect(() => {
-            if (selectedDate && profId && activeLoc) { // Modificado para requerir activeLoc
+            if (selectedDate && profId) {
                 let active = true;
                 abandonHold();
                 setSelectedTime('');
@@ -3270,9 +3101,8 @@
                 setLoadingSlots(true);
                 const nowMs = Date.now();
                 Promise.all([
-                    // NUEVO: Filtrar turnos solo para este consultorio
-                    db.collection("appointments").where("profId","==",profId).where("locationId","==",activeLoc.id).where("date","==",selectedDate).get(),
-                    db.collection("holds").where("profId","==",profId).where("locationId","==",activeLoc.id).where("date","==",selectedDate).get()
+                    db.collection("appointments").where("profId","==",profId).where("date","==",selectedDate).get(),
+                    db.collection("holds").where("profId","==",profId).where("date","==",selectedDate).get()
                 ]).then(([aptsSnap, holdsSnap]) => {
                     if (!active) return;
                     const fromApts = aptsSnap.docs.map(d => d.data()).filter(d => !d.cancelled).map(d => d.time);
@@ -3289,18 +3119,17 @@
                 });
                 return () => { active = false; };
             }
-        }, [selectedDate, profId, activeLoc]);
+        }, [selectedDate, profId]);
 
         const selectTime = async (time) => {
-            if (selectingSlot || time === selectedTime) return; 
+            if (selectingSlot || time === selectedTime) return; // GUARD: evita doble clic y re-selección
             setSelectingSlot(true);
             if (currentHoldRef.current) {
                 await releaseHold(currentHoldRef.current);
                 currentHoldRef.current = null;
                 clearHoldState();
             }
-            // NUEVO: Incluir locationId en el slotId para que no colisionen
-            const slotId = `${profId}_${activeLoc.id}_${selectedDate}_${time.replace(':','-')}`;
+            const slotId = `${profId}_${selectedDate}_${time.replace(':','-')}`;
             const secsToUse = Math.max(remainingSecsRef.current || 120, 30);
             const expiresAt = firebase.firestore.Timestamp.fromMillis(Date.now() + secsToUse * 1000);
             try {
@@ -3314,10 +3143,11 @@
                         const h = holdDoc.data();
                         const exp = h.expiresAt?.toDate ? h.expiresAt.toDate().getTime() : new Date(h.expiresAt).getTime();
                         if (exp > Date.now() && h.sessionId !== sessionId.current) throw new Error("Otro usuario está reservando este turno. Intentá en unos instantes.");
+                        // Hold expirado: borrarlo de la DB (limpieza de "basura fantasma")
                         if (exp <= Date.now()) tx.delete(holdRef);
                     }
                     tx.set(holdRef, { 
-                        profId, locationId: activeLoc.id, date: selectedDate, time, sessionId: sessionId.current, expiresAt,
+                        profId, date: selectedDate, time, sessionId: sessionId.current, expiresAt,
                         serverCreatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                         creatorUid: auth.currentUser?.uid
                     });
@@ -3341,39 +3171,58 @@
             }
         };
 
-        const handleWaitlist = async (e) => {
+          const handleWaitlist = async (e) => {
             e.preventDefault();
+            
+            // Obtenemos el nombre usando el ID del input para evitar el error del e.target
             const clientInput = document.getElementById('waitlistClient');
             const clientName = clientInput ? clientInput.value.trim() : '';
-            if (!clientName) { setToast({ type:'error', message:'Ingresá tu nombre y apellido.' }); return; }
+            
+            if (!clientName) { 
+                setToast({ type:'error', message:'Ingresá tu nombre y apellido.' }); 
+                return; 
+            }
+
             const wLocal = waitlistPhoneLocal.replace(/\D/g,'');
-            if (wLocal.length < 8) { setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); return; }
+            if (wLocal.length < 8) { 
+                setToast({ type:'error', message:'Ingresá un WhatsApp válido.' }); 
+                return; 
+            }
             
             const builtPhone = buildPhone(waitlistPhonePrefix, wLocal);
             setBooking(true);
+            
             try {
                 if (!auth.currentUser) await auth.signInAnonymously();
+                
+                // Verificar duplicado: misma fecha, mismo teléfono, mismo profesional
                 const dupSnap = await db.collection("waitlists")
                     .where("profId", "==", profId)
-                    .where("locationId", "==", activeLoc.id) // NUEVO: Espera por sucursal
                     .where("date", "==", selectedDate)
                     .where("phone", "==", builtPhone)
                     .limit(1).get();
                     
                 if (!dupSnap.empty) {
-                    setToast({ type:'error', message:'Ya estás en la lista de espera.' });
-                    setBooking(false); return;
+                    setToast({ type:'error', message:'Ya estás en la lista de espera para ese día.' });
+                    setBooking(false); 
+                    return;
                 }
                 
                 await db.collection("waitlists").add({
-                    profId, locationId: activeLoc.id, locationName: activeLoc.name,
-                    date: selectedDate, client: clientName, phone: builtPhone,
+                    profId,
+                    date: selectedDate,
+                    client: clientName,
+                    phone: builtPhone,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                
                 setToast({type:'success', message:'¡Anotado! Te avisaremos si se libera un turno.'});
                 setShowWaitlistForm(false);
-            } catch(err) { setToast({type:'error', message:'No se pudo anotar en la lista.'}); } 
-            finally { setBooking(false); }
+            } catch(err) {
+                setToast({type:'error', message:'No se pudo anotar en la lista.'});
+            } finally { 
+                setBooking(false); 
+            }
         };
 
         const handleBooking = async (e) => {
@@ -3389,26 +3238,27 @@
             if (dniValue.length < 6) { setToast({ type:'error', message:'Ingresá un DNI válido.' }); return; }
             
             setBooking(true);
+            
             try { 
                 let currentUid = auth.currentUser?.uid;
                 if (!currentUid) {
                     const cred = await auth.signInAnonymously();
                     currentUid = cred.user.uid;
                 }
-                const slotId  = `${profId}_${activeLoc.id}_${selectedDate}_${selectedTime.replace(':','-')}`;
+                const slotId  = `${profId}_${selectedDate}_${selectedTime.replace(':','-')}`;
                 const holdRef = db.collection("holds").doc(slotId);
                 const slotRef = db.collection("appointments").doc(slotId);
                 
-                const maxPerDay = activeLoc.config?.maxPerDay || 0;
+                const maxPerDay = prof?.config?.maxPerDay || 0;
                 if (maxPerDay > 0) {
-                    const daySnap = await db.collection("appointments").where("profId", "==", profId).where("locationId", "==", activeLoc.id).where("date", "==", selectedDate).get();
+                    const daySnap = await db.collection("appointments").where("profId", "==", profId).where("date", "==", selectedDate).get();
                     const activeCount = daySnap.docs.filter(d => !d.data().cancelled).length;
                     if (activeCount >= maxPerDay) { setToast({ type:'error', message:'Ya se alcanzó el máximo de turnos para ese día.' }); setBooking(false); return; }
                 }
 
                 const holdDoc = await holdRef.get();
                 if (!holdDoc.exists) throw new Error("Tu reserva ya no está activa. Elegí el horario nuevamente.");
-                if (holdDoc.data().sessionId !== sessionId.current) throw new Error("Tu reserva fue tomada por otra persona.");
+                if (holdDoc.data().sessionId !== sessionId.current) throw new Error("Tu reserva fue tomada por otra persona. Elegí otro horario.");
                 const holdExp = holdDoc.data().expiresAt?.toDate ? holdDoc.data().expiresAt.toDate().getTime() : new Date(holdDoc.data().expiresAt).getTime();
                 if (holdExp <= Date.now()) throw new Error("Tu reserva expiró. Elegí el horario nuevamente.");
 
@@ -3416,27 +3266,36 @@
                 const fullPhone = buildPhone(phonePrefix, phoneLocal);
                 const notes = e.target.notes?.value || '';
 
+                // --- LÓGICA INTELIGENTE DE COBRO ---
                 const isMp = (!prof.paymentMethod || prof.paymentMethod === 'mercadopago');
 
                 if (isMp) {
                     const montoNumerico = (prof.price || '1000').replace(/[^0-9]/g, '');
-                    if (!montoNumerico || montoNumerico === '0') throw new Error("El negocio no configuró un precio válido para cobrar con Mercado Pago.");
+                    if (!montoNumerico || montoNumerico === '0') {
+                        throw new Error("El negocio no configuró un precio válido para cobrar con Mercado Pago.");
+                    }
 
                     const res = await fetch('https://turnofacil-backend-4r9k.onrender.com/crear-preferencia', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            profId, monto: montoNumerico, concepto: `Reserva en ${prof.business} (${activeLoc.name})`,
+                            profId,
+                            monto: montoNumerico,
+                            concepto: `Reserva en ${prof.business}`,
                             clientData: { clientName, phone: fullPhone, dni: dniValue, date: selectedDate, time: selectedTime }
                         })
                     });
                     const data = await res.json();
-                    if (data.init_point) { window.location.href = data.init_point; return; } 
-                    else { throw new Error("No se pudo conectar con Mercado Pago."); }
+                    if (data.init_point) {
+                        window.location.href = data.init_point; 
+                        return; 
+                    } else {
+                        throw new Error("No se pudo conectar con Mercado Pago.");
+                    }
                 } else {
+                    // OPCIÓN TRANSFERENCIA
                     const aptData = {
-                        profId, locationId: activeLoc.id, locationName: activeLoc.name,
-                        date: selectedDate, time: selectedTime,
+                        profId, date: selectedDate, time: selectedTime,
                         client: clientName, dni: dniValue, phone: fullPhone, notes: notes,
                         clientUid: currentUid, status: 'pendiente_pago', method: 'transferencia',
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -3449,17 +3308,25 @@
                         tx.delete(holdRef); 
                     });
 
+                    // --- DISPARAR NOTIFICACIÓN PUSH AL PROFESIONAL ---
                     fetch('https://turnofacil-backend-4r9k.onrender.com/enviar-notificacion', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ profId: profId, titulo: '¡Nuevo turno reservado! 📅', mensaje: `${clientName} agendó para el ${formatDate(selectedDate)} a las ${selectedTime}hs en ${activeLoc.name}.` })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            profId: profId,
+                            titulo: '¡Nuevo turno reservado! 📅',
+                            mensaje: `${clientName} agendó para el ${formatDate(selectedDate)} a las ${selectedTime}hs.`
+                        })
                     }).catch(err => console.error("Error al disparar push:", err));
+                    // --------------------------------------------------
 
                     clearHoldState(); currentHoldRef.current = null; remainingSecsRef.current = 120; 
 
-                    const mensajeWS = encodeURIComponent(`Hola ${prof.business}! 👋\n\nAcabo de reservar un turno:\n🏥 Consultorio: ${activeLoc.name}\n📅 Fecha: ${formatDate(selectedDate)}\n⏰ Hora: ${selectedTime} hs\n👤 Nombre: ${clientName}\n\nAdjunto aquí el comprobante de transferencia por la reserva. ¡Muchas gracias!`);
+                    const mensajeWS = encodeURIComponent(`Hola ${prof.business}! 👋\n\nAcabo de reservar un turno:\n📅 Fecha: ${formatDate(selectedDate)}\n⏰ Hora: ${selectedTime} hs\n👤 Nombre: ${clientName}\n\nAdjunto aquí el comprobante de transferencia por la reserva. ¡Muchas gracias!`);
 
                     setDialog({
-                        type: 'alert', title: '¡Reserva Registrada! 📝',
+                        type: 'alert',
+                        title: '¡Reserva Registrada! 📝',
                         message: (
                             <div className="text-center">
                                 <p className="mb-2 text-sm text-neutral-600">Para confirmar tu turno, transferí a este Alias/CBU:</p>
@@ -3468,7 +3335,18 @@
                                         {prof.bankAlias || '(Solicitar por WhatsApp)'}
                                     </div>
                                     {prof.bankAlias && (
-                                        <button type="button" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(prof.bankAlias).then(() => setToast({type:'success', message:'¡Alias copiado al portapapeles!'})); }} className="mt-2 text-xs font-bold text-brand-600 hover:text-brand-800 transition">📋 Tocar para copiar Alias</button>
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                navigator.clipboard.writeText(prof.bankAlias)
+                                                    .then(() => setToast({type:'success', message:'¡Alias copiado al portapapeles!'}))
+                                                    .catch(() => setToast({type:'error', message:'No se pudo copiar'}));
+                                            }}
+                                            className="mt-2 text-xs font-bold text-brand-600 hover:text-brand-800 transition"
+                                        >
+                                            📋 Tocar para copiar Alias
+                                        </button>
                                     )}
                                 </div>
                                 <p className="text-[11px] text-neutral-500">Al tocar "Entendido", abriremos WhatsApp para que envíes el comprobante.</p>
@@ -3476,31 +3354,56 @@
                         ),
                         onConfirm: () => {
                             window.location.href = `https://wa.me/${prof.phone}?text=${mensajeWS}`;
-                            setSent({ date: selectedDate, time: selectedTime, client: clientName, method: 'transfer', alias: prof.bankAlias, waLink: `https://wa.me/${prof.phone}?text=${mensajeWS}` });
+                            setSent({ 
+                                date: selectedDate, 
+                                time: selectedTime, 
+                                client: clientName,
+                                method: 'transfer',
+                                alias: prof.bankAlias,
+                                waLink: `https://wa.me/${prof.phone}?text=${mensajeWS}`
+                            });
                         }
                     });
                 }
-            } catch (err) { setToast({ type:'error', message: err.message }); } 
-            finally { setBooking(false); }
+            } catch (err) { 
+                console.error(err); 
+                setToast({ type:'error', message: err.message }); 
+            } finally { setBooking(false); }
         };
 
         if (profExpired) return (
             <div className="h-screen flex items-center justify-center p-6 bg-brand-50 text-center fade-in">
-                <div className="bg-white p-8 rounded-4xl shadow-xl max-w-sm w-full border border-neutral-100"><span className="text-5xl block mb-4">⚠️</span><h2 className="text-xl font-bold mb-2">Servicio inactivo</h2><p className="text-neutral-500 text-sm">El sistema de reservas de este negocio se encuentra en pausa.</p></div>
+                <div className="bg-white p-8 rounded-4xl shadow-xl max-w-sm w-full border border-neutral-100">
+                    <span className="text-5xl block mb-4">⚠️</span>
+                    <h2 className="text-xl font-bold mb-2">Servicio temporalmente inactivo</h2>
+                    <p className="text-neutral-500 text-sm">El sistema de reservas de este negocio se encuentra en pausa. Volvé a intentar más tarde.</p>
+                </div>
             </div>
         );
 
         if (sent) {
             const openGoogleCalendar = () => {
-                const [y,m,d] = sent.date.split('-').map(Number); const [h,min] = sent.time.split(':').map(Number);
-                const pad = n => String(n).padStart(2,'0'); const startStr = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
-                const dur = activeLoc?.config?.duration || 30; const dObj = new Date(y, m-1, d, h, min); dObj.setMinutes(dObj.getMinutes() + dur);
+                const [y,m,d] = sent.date.split('-').map(Number);
+                const [h,min] = sent.time.split(':').map(Number);
+                
+                const pad = n => String(n).padStart(2,'0');
+                const startStr = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+                
+                const dur = prof?.config?.duration || 30;
+                const dObj = new Date(y, m-1, d, h, min);
+                dObj.setMinutes(dObj.getMinutes() + dur);
                 const endStr = `${dObj.getFullYear()}${pad(dObj.getMonth()+1)}${pad(dObj.getDate())}T${pad(dObj.getHours())}${pad(dObj.getMinutes())}00`;
-                const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Turno en ${activeLoc?.name || prof.business}`)}&dates=${startStr}/${endStr}&details=Turno reservado online.&location=${encodeURIComponent(activeLoc?.address || '')}`;
+
+                const title = encodeURIComponent(`Turno en ${prof?.business || ''}`);
+                const details = encodeURIComponent(`Turno reservado online.`);
+                const loc = encodeURIComponent(prof?.address || '');
+                
+                const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&location=${loc}`;
                 window.open(url, '_blank');
             };
 
-            const waMessage = encodeURIComponent(`¡Hola! Acabo de reservar un turno.\n\n🏥 Sucursal: ${activeLoc?.name}\n👤 Nombre: ${sent.client}\n📅 Fecha: ${formatDate(sent.date)}\n⏰ Hora: ${sent.time} hs\n\n¡Gracias!`);
+            // NUEVO: Generar mensaje y link de WhatsApp para el profesional
+            const waMessage = encodeURIComponent(`¡Hola! Acabo de reservar un turno.\n\n👤 Nombre: ${sent.client}\n📅 Fecha: ${formatDate(sent.date)}\n⏰ Hora: ${sent.time} hs\n\n¡Gracias!`);
             const waLink = sent.method === 'transfer' ? sent.waLink : `https://wa.me/${prof?.phone}?text=${waMessage}`;
 
             return (
@@ -3508,11 +3411,13 @@
                     <div className="bg-white p-10 rounded-4xl shadow-xl max-w-sm border border-neutral-100 w-full">
                         <div className="w-20 h-20 custom-bg rounded-full flex items-center justify-center mx-auto mb-4 text-5xl border border-white">✓</div>
                         <h2 className="text-2xl font-bold tracking-tight">{sent.method === 'transfer' ? '¡Reserva Registrada!' : '¡Turno Confirmado!'}</h2>
-                        <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business} - {activeLoc?.name}</p>
+                        <p className="text-neutral-500 text-sm mt-1 mb-4">{prof?.business}</p>
                         <div className="bg-neutral-50 rounded-2xl p-4 border custom-border mb-4">
                             <p className="custom-text font-semibold text-lg">{formatDate(sent.date)}</p>
                             <p className="custom-text font-bold text-2xl">{sent.time} hs</p>
-                            {activeLoc?.address && <p className="text-neutral-500 text-xs mt-2">📍 {activeLoc.address}</p>}
+                            {prof?.address && (
+                                <p className="text-neutral-500 text-xs mt-2">📍 {prof.address}</p>
+                            )}
                         </div>
 
                         {sent.method === 'transfer' && sent.alias && (
@@ -3523,12 +3428,19 @@
                             </div>
                         )}
                         
-                        <a href={waLink} target="_blank" rel="noopener noreferrer" className="w-full bg-[#25D366] text-white py-3.5 rounded-2xl text-sm font-bold mb-3 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-[#20bd5a] shadow-md"><IconWhatsapp /> {sent.method === 'transfer' ? 'Enviar comprobante' : 'Avisar al profesional'}</a>
+                        {/* Botón de WhatsApp destacado */}
+                        <a href={waLink} target="_blank" rel="noopener noreferrer" className="w-full bg-[#25D366] text-white py-3.5 rounded-2xl text-sm font-bold mb-3 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-[#20bd5a] shadow-md">
+                            <IconWhatsapp /> {sent.method === 'transfer' ? 'Enviar comprobante por WhatsApp' : 'Avisar al profesional'}
+                        </a>
 
-                        {activeLoc?.address && (
-                            <button type="button" onClick={() => openMaps(activeLoc.address, activeLoc.addressLat, activeLoc.addressLng)} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">🗺️ Cómo llegar</button>
+                        {prof?.address && (
+                            <button type="button" onClick={() => openMaps(prof.address, prof.addressLat, prof.addressLng)} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
+                                🗺️ Cómo llegar
+                            </button>
                         )}
-                        <button type="button" onClick={openGoogleCalendar} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">📅 Agregar a Google Calendar</button>
+                        <button type="button" onClick={openGoogleCalendar} className="w-full bg-neutral-100 text-neutral-700 border border-neutral-200 py-2.5 rounded-2xl text-sm font-medium mb-2 flex items-center justify-center gap-2 active:scale-95 transition hover:bg-neutral-200">
+                            📅 Agregar a Google Calendar
+                        </button>
                         <button type="button" onClick={() => { setSent(null); setSelectedDate(''); setSelectedTime(''); setBookedTimes([]); setClientView('cancel'); }} className="mt-2 w-full custom-text border custom-border py-2.5 rounded-2xl text-sm font-medium transition">Ver mis turnos</button>
                     </div>
                 </div>
@@ -3537,45 +3449,16 @@
 
         if (!prof) return <Spinner />;
 
-        // PANTALLA 1: SELECCIÓN DE CONSULTORIO (Solo si hay más de 1 y el cliente quiere agendar)
-        if (!activeLoc && clientView === 'book') {
-            return (
-                <div className="max-w-md mx-auto p-6 pb-12 fade-in">
-                    <div className="text-center mb-8 mt-6">
-                        {prof.logoBase64 ? <img src={prof.logoBase64} className="w-24 h-24 rounded-4xl mx-auto mb-5 object-cover shadow-xl border-4 border-white" />
-                                         : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{(prof.business || '?').charAt(0).toUpperCase()}</div>}
-                        <h1 className="text-2xl font-bold text-neutral-950 tracking-tighter">{prof.business}</h1>
-                        <p className="custom-text font-medium mb-6">¿En qué consultorio querés atenderte?</p>
-                        <div className="space-y-4">
-                            {prof.locations.map(loc => (
-                                <button key={loc.id} onClick={() => {
-                                    const url = new URL(window.location);
-                                    url.searchParams.set('loc', loc.slug || loc.id);
-                                    window.history.pushState({}, '', url);
-                                    setActiveLoc(loc);
-                                }} className="w-full p-5 bg-white border border-neutral-200 rounded-3xl shadow-sm hover:border-brand-400 active:scale-95 transition text-left relative overflow-hidden group">
-                                    <h3 className="font-bold text-lg text-neutral-900 mb-1 group-hover:text-brand-600 transition">{loc.name}</h3>
-                                    <p className="text-sm text-neutral-500">📍 {loc.address || 'Consultar dirección'}</p>
-                                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-brand-400 text-2xl group-hover:translate-x-2 transition opacity-0 group-hover:opacity-100">→</div>
-                                </button>
-                            ))}
-                        </div>
-                        <button type="button" onClick={() => setClientView('cancel')} className="mt-8 text-neutral-500 text-sm font-medium hover:text-neutral-800 underline">Ya tengo un turno y quiero cancelarlo</button>
-                    </div>
-                </div>
-            );
-        }
-
         const today = getTodayStr(); let availableSlots = [];
         let isDayUnavailable = false;
-        if (selectedDate && !loadingSlots && activeLoc) {
-            const isWork = activeLoc.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
+        if (selectedDate && !loadingSlots) {
+            const isWork = prof.config.workingDays.includes(parseDateLocal(selectedDate).getDay()) && !(prof.config.blockedDates||[]).includes(selectedDate);
             if (isWork) {
-                const maxPerDay = activeLoc.config.maxPerDay || 0;
+                const maxPerDay = prof.config.maxPerDay || 0;
                 if (maxPerDay > 0 && bookedTimes.length >= maxPerDay) {
                     isDayUnavailable = true;
                 } else {
-                    availableSlots = generateTimeSlots(activeLoc.config.startTime, activeLoc.config.endTime, activeLoc.config.duration).filter(t => !bookedTimes.includes(t));
+                    availableSlots = generateTimeSlots(prof.config.startTime, prof.config.endTime, prof.config.duration).filter(t => !bookedTimes.includes(t));
                 }
             } else isDayUnavailable = true;
             if (selectedDate === today) { const nowMins = new Date().getHours()*60 + new Date().getMinutes(); availableSlots = availableSlots.filter(t => (Number(t.split(':')[0])*60+Number(t.split(':')[1])) > nowMins); }
@@ -3583,30 +3466,26 @@
 
         return (
             <div className="max-w-md mx-auto p-6 pb-12 fade-in">
-                <div className="text-center mb-8 mt-6 relative">
-                    {prof.locations && prof.locations.length > 1 && clientView === 'book' && (
-                        <button type="button" onClick={() => { setActiveLoc(null); setSelectedDate(''); setSelectedTime(''); }} className="absolute left-0 top-0 text-neutral-400 hover:text-neutral-800 text-sm font-bold flex items-center gap-1 transition">
-                            ← Volver
-                        </button>
-                    )}
+                <div className="text-center mb-8 mt-6">
                     {prof.logoBase64 ? <img src={prof.logoBase64} className="w-24 h-24 rounded-4xl mx-auto mb-5 object-cover shadow-xl border-4 border-white" />
                                      : <div className="w-24 h-24 custom-bg rounded-4xl mx-auto flex items-center justify-center text-5xl font-bold mb-5 shadow-xl border-4 border-white">{(prof.business || '?').charAt(0).toUpperCase()}</div>}
                     <h1 className="text-2xl font-bold text-neutral-950 tracking-tighter">{prof.business}</h1>
-                    {clientView === 'book' && activeLoc && (
-                        <div className="mt-2 mb-2 inline-block bg-brand-50 border border-brand-200 text-brand-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
-                            {activeLoc.name}
-                        </div>
-                    )}
                     <p className="custom-text font-medium">{prof.service || 'Reserva tu cita online'}</p>
                     
                     {prof.price && (
-                        <div className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 bg-white text-neutral-800 rounded-full font-bold text-sm shadow-sm border border-neutral-100">💵 {prof.price}</div>
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 bg-white text-neutral-800 rounded-full font-bold text-sm shadow-sm border border-neutral-100">
+                            💵 {prof.price}
+                        </div>
                     )}
                     
-                    {clientView === 'book' && activeLoc?.address && (
+                    {prof.address && (
                         <div className="mt-3">
-                            <button type="button" onClick={() => openMaps(activeLoc.address, activeLoc.addressLat, activeLoc.addressLng)} className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-white hover:bg-neutral-100 shadow-sm border border-neutral-100 px-3 py-1.5 rounded-xl transition active:scale-95">
-                                📍 {activeLoc.address}
+                            <button
+                                type="button"
+                                onClick={() => openMaps(prof.address, prof.addressLat, prof.addressLng)}
+                                className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-800 bg-white hover:bg-neutral-100 shadow-sm border border-neutral-100 px-3 py-1.5 rounded-xl transition active:scale-95"
+                            >
+                                📍 {prof.address}
                             </button>
                         </div>
                     )}
@@ -3679,10 +3558,17 @@
                             <button type="submit" disabled={booking} className={`w-full custom-bg p-5 rounded-2xl font-semibold shadow-lg mt-2 transition text-lg text-white flex items-center justify-center gap-3 ${booking ? 'opacity-80 cursor-wait' : 'active:scale-[0.98]'}`}>
                                 {booking ? (
                                     <>
-                                        <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                        {(!prof?.paymentMethod || prof.paymentMethod === 'mercadopago') ? 'Generando link seguro...' : 'Procesando reserva...'}
+                                        <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        {(!prof?.paymentMethod || prof.paymentMethod === 'mercadopago') 
+                                            ? 'Generando link seguro. Espere por favor...' 
+                                            : 'Procesando reserva...'}
                                     </>
-                                ) : 'Confirmar Reserva'}
+                                ) : (
+                                    'Confirmar Reserva'
+                                )}
                             </button>
                         </div>
                     </form>
@@ -3692,7 +3578,6 @@
             </div>
         );
     }
-
 
     // ===================== CANCEL VIEW =====================
     function CancelView({ profId, setDialog, setToast, onReschedule }) {
