@@ -3119,7 +3119,7 @@
         useEffect(() => {
             if (selectedDate && profId) {
                 let active = true;
-                abandonHold();
+                abandonHold(true); // <--- La solución: Pasamos "true" para resetear el reloj del hold al cambiar de fecha
                 setSelectedTime('');
                 setBookedTimes([]);
                 setShowWaitlistForm(false);
