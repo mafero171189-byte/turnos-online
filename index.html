@@ -93,10 +93,23 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // Sincronizador de Hora Real (Antitrampas)
+    let internetTimeOffset = 0;
+    fetch('https://worldtimeapi.org/api/timezone/America/Argentina/Buenos_Aires')
+        .then(res => res.json())
+        .then(data => {
+            const realTime = new Date(data.datetime).getTime();
+            const localTime = new Date().getTime();
+            internetTimeOffset = realTime - localTime; // Calcula la diferencia exacta
+        })
+        .catch(() => console.warn("Fallback a hora local"));
+
     // Configuramos Firestore para que sea más estable en móviles
-    db.settings({
-        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
-    });
+    try {
+        db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
+    } catch (e) {
+        // Ignorar si Firestore ya estaba inicializado
+    }
 
     if (typeof L !== 'undefined') {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -202,11 +215,17 @@
         try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } 
         catch(e) { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
     };
-    const getDaysLeft   = (expiresAt) => {
+    const getDaysLeft = (expiresAt) => {
         if (!expiresAt) return 0;
+        
+        // nowMs es la hora local + la diferencia con el reloj atómico. 
+        // Si el usuario atrasa su PC 1 año, internetTimeOffset suma 1 año automáticamente.
+        const nowMs = new Date().getTime() + internetTimeOffset; 
+        
         const ms = expiresAt?.toDate ? expiresAt.toDate().getTime() : new Date(expiresAt).getTime();
         if (isNaN(ms)) return 0;
-        const diff = ms - new Date().getTime();
+        
+        const diff = ms - nowMs;
         return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
     };
 
@@ -896,7 +915,21 @@
         const [renewMethod, setRenewMethod] = useState('Mercado Pago');
         const [editPaymentModal, setEditPaymentModal] = useState(null); // payment obj being edited
 
+        const purgeExpiredHolds = async () => {
+            const now = new Date();
+            try {
+                const snap = await db.collection("holds").where("expiresAt", "<", now).limit(400).get();
+                if (snap.empty) return;
+                const batch = db.batch();
+                snap.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                console.log(`🧹 Limpieza: ${snap.size} reservas temporales borradas.`);
+            } catch (err) { console.error("Error limpieza:", err); }
+        };
+
         useEffect(() => {
+            purgeExpiredHolds(); // Limpia la basura silenciosamente al entrar
+
             const unsubProfs = db.collection("professionals").onSnapshot(
                 snap => { setProfs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); },
                 err => { console.warn('onSnapshot profs error:', err); setLoading(false); }
@@ -966,20 +999,8 @@
                 });
                 
                 if (method === 'Bonificado' || amount <= 0) {
-                    // Si es bonificado: eliminar el último pago registrado de este profesional (si existe)
-                    const lastPaySnap = await db.collection("payments")
-                        .where("profId", "==", prof.id)
-                        .get();
-                    if (!lastPaySnap.empty) {
-                        // Ordenar en JS para evitar necesidad de índice compuesto
-                        const sorted = lastPaySnap.docs.sort((a, b) => {
-                            const aTime = a.data().createdAt?.toMillis?.() || new Date(a.data().date || 0).getTime();
-                            const bTime = b.data().createdAt?.toMillis?.() || new Date(b.data().date || 0).getTime();
-                            return bTime - aTime;
-                        });
-                        await sorted[0].ref.delete();
-                    }
-                    setToast({ type:'success', message: 'Licencia bonificada. Último pago eliminado del historial.' });
+                    // Solo mostramos el mensaje, NO borramos pagos anteriores para no romper la contabilidad
+                    setToast({ type:'success', message: 'Licencia bonificada. No se registraron cobros.' });
                 } else {
                     // Guardar nuevo registro de pago
                     await db.collection("payments").add({
@@ -2156,7 +2177,7 @@
                             if (a.date < today) return true;
                             if (a.date === today) {
                                 const [h, m] = a.time.split(':').map(Number);
-                                return (h * 60 + m) <= nowMins;
+                                return (h * 60 + m + 30) <= nowMins; // 30 minutos de gracia
                             }
                             return false;
                         };
@@ -2216,7 +2237,10 @@
                 const nowMins = now.getHours() * 60 + now.getMinutes();
                 const isPastNow = (a) => {
                     if (a.date < today) return true;
-                    if (a.date === today) { const [h,m] = a.time.split(':').map(Number); return (h*60+m) <= nowMins; }
+                    if (a.date === today) { 
+                        const [h,m] = a.time.split(':').map(Number); 
+                        return (h*60+m+30) <= nowMins; // 30 minutos de gracia
+                    }
                     return false;
                 };
                 const all = allAptsRef.current;
