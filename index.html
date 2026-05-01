@@ -2568,7 +2568,7 @@
                     </div>
                 )}
 
-                <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl border border-neutral-100 shadow-sm flex-wrap">
+                <div className="grid grid-cols-2 gap-3 mb-8">
                     {[
                         ['appointments','Próximas Citas',<IconCalendar />],
                         ['cancelled', 'Cancelados', <IconBlock />],
@@ -2578,13 +2578,15 @@
                         ['settings','Mi Perfil',<IconSettings />],
                         ['help','Soporte',<IconQuestion />]
                     ].map(([tab,label,icon]) => (
-                        <button type="button" key={tab} onClick={() => setActiveTab(tab)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeTab===tab ? 'bg-brand-50 text-brand-700' : 'text-neutral-500 hover:text-neutral-800'}`}>
-                            {icon} {label}
+                        <button type="button" key={tab} onClick={() => setActiveTab(tab)}
+                            className={`relative flex flex-col items-center justify-center gap-2 py-4 px-3 rounded-2xl font-semibold text-sm transition-all active:scale-95 border ${activeTab===tab ? 'bg-brand-600 text-white border-brand-600 shadow-md' : 'bg-white text-neutral-600 border-neutral-100 shadow-sm hover:border-brand-200 hover:text-brand-700'}`}>
+                            <span className={`${activeTab===tab ? 'text-white' : 'text-brand-500'}`}>{icon}</span>
+                            <span className="leading-tight text-center">{label}</span>
                             {tab === 'waitlist' && waitlist.filter(w => w.date >= getTodayStr()).length > 0 && (
-                                <span className="bg-brand-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">{waitlist.filter(w => w.date >= getTodayStr()).length}</span>
+                                <span className="absolute top-2 right-2 bg-brand-600 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow">{waitlist.filter(w => w.date >= getTodayStr()).length}</span>
                             )}
                             {tab === 'cancelled' && apts.filter(a => a.cancelled).length > 0 && (
-                                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">{apts.filter(a => a.cancelled).length}</span>
+                                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow">{apts.filter(a => a.cancelled).length}</span>
                             )}
                         </button>
                     ))}
