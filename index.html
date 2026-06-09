@@ -47,20 +47,195 @@
         .custom-bg { background-color: var(--custom-color) !important; color: white !important;}
         .custom-text { color: var(--custom-color) !important; }
         .custom-border { border-color: var(--custom-color) !important; }
+
+        /* ========== SPLASH SCREEN ========== */
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Estrella flotante */
+        @keyframes floatStar {
+            0%   { transform: translateY(0px) scale(1);   opacity: 0.15; }
+            50%  { transform: translateY(-18px) scale(1.1); opacity: 0.35; }
+            100% { transform: translateY(0px) scale(1);   opacity: 0.15; }
+        }
+        /* Logo bouncing */
+        @keyframes logoBounce {
+            0%,100% { transform: translateY(0px); }
+            30%     { transform: translateY(-12px); }
+            60%     { transform: translateY(-5px); }
+        }
+        /* Pulso glow detrás del logo */
+        @keyframes glowPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5); }
+            50%     { box-shadow: 0 0 40px 20px rgba(99,102,241,0.15); }
+        }
+        /* Aparición suave del texto */
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        /* Parpadeo del subtítulo */
+        @keyframes blinkDots {
+            0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+        }
+
+        /* ========== LOADING SCREEN (fondo reemplazado) ========== */
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes orbFloat1 {
+            0%,100% { transform: translate(0,0) scale(1); }
+            33%     { transform: translate(30px,-40px) scale(1.1); }
+            66%     { transform: translate(-20px,20px) scale(0.95); }
+        }
+        @keyframes orbFloat2 {
+            0%,100% { transform: translate(0,0) scale(1); }
+            33%     { transform: translate(-25px,35px) scale(1.05); }
+            66%     { transform: translate(40px,-20px) scale(0.9); }
+        }
+        @keyframes orbFloat3 {
+            0%,100% { transform: translate(0,0) scale(1); }
+            50%     { transform: translate(15px,50px) scale(1.15); }
+        }
+        @keyframes loaderRing {
+            0%   { stroke-dashoffset: 220; opacity: 0.3; }
+            50%  { stroke-dashoffset: 60;  opacity: 1; }
+            100% { stroke-dashoffset: 220; opacity: 0.3; }
+        }
+        @keyframes loaderDot {
+            0%,100% { transform: scale(0.6); opacity: 0.4; }
+            50%     { transform: scale(1.2); opacity: 1; }
+        }
     </style>
 </head>
 <body class="bg-brand-50 text-neutral-900 overflow-x-hidden">
 
     <!-- PANTALLA DE CARGA INSTANTÁNEA -->
     <div id="root">
-        <div style="display: flex; height: 100vh; align-items: center; justify-content: center; background-color: #f5f7ff; font-family: sans-serif;">
-            <div style="text-align: center;">
-                <div style="width: 48px; height: 48px; border: 4px solid #c3d1fc; border-top-color: #4f46e5; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
-                <h2 style="color: #312e81; font-weight: bold; margin: 0; font-size: 24px;">Turno Fácil Pro</h2>
-                <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">Iniciando sistema...</p>
-                <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+        <!-- ① SPLASH ANIMADO (fondo oscuro, logo + nombre) -->
+        <div id="splash-screen" style="
+            display: flex;
+            height: 100vh;
+            align-items: center;
+            justify-content: center;
+            background-color: #1e1b4b;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            position: relative;
+        ">
+            <!-- Partículas / estrellas decorativas -->
+            <div style="position:absolute;inset:0;pointer-events:none;">
+                <!-- 12 estrellitas distribuidas -->
+                <div style="position:absolute;top:8%;left:12%;width:6px;height:6px;border-radius:50%;background:#818cf8;animation:floatStar 3.2s ease-in-out infinite;"></div>
+                <div style="position:absolute;top:15%;right:18%;width:4px;height:4px;border-radius:50%;background:#a5b4fc;animation:floatStar 2.8s ease-in-out 0.4s infinite;"></div>
+                <div style="position:absolute;top:30%;left:6%;width:5px;height:5px;border-radius:50%;background:#6366f1;animation:floatStar 3.6s ease-in-out 0.8s infinite;"></div>
+                <div style="position:absolute;top:25%;right:8%;width:7px;height:7px;border-radius:50%;background:#818cf8;animation:floatStar 2.5s ease-in-out 1.1s infinite;"></div>
+                <div style="position:absolute;top:70%;left:10%;width:4px;height:4px;border-radius:50%;background:#a5b4fc;animation:floatStar 3.9s ease-in-out 0.3s infinite;"></div>
+                <div style="position:absolute;top:75%;right:12%;width:6px;height:6px;border-radius:50%;background:#6366f1;animation:floatStar 2.7s ease-in-out 0.9s infinite;"></div>
+                <div style="position:absolute;top:55%;left:4%;width:3px;height:3px;border-radius:50%;background:#c7d2fe;animation:floatStar 4.1s ease-in-out 1.5s infinite;"></div>
+                <div style="position:absolute;top:45%;right:5%;width:5px;height:5px;border-radius:50%;background:#818cf8;animation:floatStar 3.3s ease-in-out 0.6s infinite;"></div>
+                <div style="position:absolute;top:85%;left:22%;width:4px;height:4px;border-radius:50%;background:#a5b4fc;animation:floatStar 2.9s ease-in-out 1.2s infinite;"></div>
+                <div style="position:absolute;top:88%;right:25%;width:5px;height:5px;border-radius:50%;background:#6366f1;animation:floatStar 3.7s ease-in-out 0.2s infinite;"></div>
+                <div style="position:absolute;top:5%;left:45%;width:3px;height:3px;border-radius:50%;background:#c7d2fe;animation:floatStar 3.0s ease-in-out 1.8s infinite;"></div>
+                <div style="position:absolute;top:92%;left:60%;width:6px;height:6px;border-radius:50%;background:#818cf8;animation:floatStar 2.6s ease-in-out 0.7s infinite;"></div>
+            </div>
+
+            <!-- Contenido central -->
+            <div style="text-align:center;z-index:1;">
+                <!-- Logo emoji con glow + bounce -->
+                <div style="
+                    font-size: 72px;
+                    line-height: 1;
+                    margin-bottom: 24px;
+                    display: inline-block;
+                    animation: logoBounce 2.4s ease-in-out infinite, glowPulse 2.4s ease-in-out infinite;
+                    filter: drop-shadow(0 0 18px rgba(99,102,241,0.7));
+                ">📅</div>
+
+                <!-- Nombre de la app -->
+                <h1 style="
+                    color: #ffffff;
+                    font-weight: 800;
+                    font-size: 28px;
+                    margin: 0 0 8px 0;
+                    letter-spacing: -0.5px;
+                    animation: fadeSlideUp 0.7s ease-out 0.2s both;
+                ">Turno Fácil Pro</h1>
+
+                <!-- Subtítulo parpadeante -->
+                <p style="
+                    color: #818cf8;
+                    font-size: 14px;
+                    margin: 0;
+                    animation: fadeSlideUp 0.7s ease-out 0.45s both, blinkDots 1.8s ease-in-out 1.2s infinite;
+                ">Cargando tu agenda...</p>
             </div>
         </div>
+
+        <!-- ② LOADER ANIMADO (reemplaza el fondo blanco aburrido) -->
+        <div id="app-loader" style="
+            display: none;
+            height: 100vh;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #eef2ff 0%, #f0f4ff 40%, #e8edff 70%, #eef2ff 100%);
+            background-size: 300% 300%;
+            animation: gradientShift 6s ease infinite;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            position: relative;
+        ">
+            <!-- Orbes de color suave -->
+            <div style="position:absolute;top:-80px;left:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(99,102,241,0.18) 0%,transparent 70%);animation:orbFloat1 8s ease-in-out infinite;pointer-events:none;"></div>
+            <div style="position:absolute;bottom:-60px;right:-60px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(124,58,237,0.15) 0%,transparent 70%);animation:orbFloat2 10s ease-in-out infinite;pointer-events:none;"></div>
+            <div style="position:absolute;top:40%;left:55%;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(79,70,229,0.12) 0%,transparent 70%);animation:orbFloat3 7s ease-in-out infinite;pointer-events:none;"></div>
+
+            <!-- Loader central -->
+            <div style="text-align:center;z-index:1;">
+                <!-- SVG spinner elegante -->
+                <div style="position:relative;width:72px;height:72px;margin:0 auto 20px;">
+                    <svg width="72" height="72" viewBox="0 0 72 72" style="position:absolute;top:0;left:0;">
+                        <circle cx="36" cy="36" r="30" fill="none" stroke="#e0e7ff" stroke-width="5"/>
+                        <circle cx="36" cy="36" r="30" fill="none" stroke="#4f46e5" stroke-width="5"
+                            stroke-linecap="round"
+                            stroke-dasharray="220"
+                            stroke-dashoffset="220"
+                            transform="rotate(-90 36 36)"
+                            style="animation: loaderRing 1.6s ease-in-out infinite;"/>
+                    </svg>
+                    <!-- Emoji pequeño en el centro -->
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;">📅</div>
+                </div>
+
+                <!-- Tres puntos animados -->
+                <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:#4f46e5;animation:loaderDot 1.2s ease-in-out 0s infinite;"></div>
+                    <div style="width:8px;height:8px;border-radius:50%;background:#6366f1;animation:loaderDot 1.2s ease-in-out 0.2s infinite;"></div>
+                    <div style="width:8px;height:8px;border-radius:50%;background:#818cf8;animation:loaderDot 1.2s ease-in-out 0.4s infinite;"></div>
+                </div>
+
+                <h2 style="color:#312e81;font-weight:700;margin:0 0 4px 0;font-size:22px;">Turno Fácil Pro</h2>
+                <p style="color:#6366f1;font-size:13px;margin:0;font-weight:500;">Preparando todo para vos...</p>
+            </div>
+        </div>
+
+        <script>
+            // Transición: splash (1.8s) → loader animado → app React
+            setTimeout(function() {
+                var splash = document.getElementById('splash-screen');
+                var loader = document.getElementById('app-loader');
+                if (splash && loader) {
+                    splash.style.opacity = '0';
+                    splash.style.transition = 'opacity 0.5s ease';
+                    setTimeout(function() {
+                        splash.style.display = 'none';
+                        loader.style.display = 'flex';
+                    }, 500);
+                }
+            }, 1800);
+        </script>
     </div>
 
     <!-- SCRIPTS PESADOS MOVIDOS AL FINAL PARA NO BLOQUEAR LA PÁGINA -->
@@ -319,7 +494,41 @@
         } catch (e) {}
     };
 
-    const Spinner = () => (<div className="flex h-screen items-center justify-center bg-brand-50"><div className="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div></div>);
+    const Spinner = () => (
+        <div style={{
+            display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(135deg, #eef2ff 0%, #f0f4ff 40%, #e8edff 70%, #eef2ff 100%)',
+            backgroundSize: '300% 300%',
+            animation: 'gradientShift 6s ease infinite',
+            fontFamily: "'Inter', sans-serif",
+            overflow: 'hidden', position: 'relative'
+        }}>
+            {/* Orbes flotantes */}
+            <div style={{position:'absolute',top:'-80px',left:'-80px',width:'280px',height:'280px',borderRadius:'50%',background:'radial-gradient(circle,rgba(99,102,241,0.18) 0%,transparent 70%)',animation:'orbFloat1 8s ease-in-out infinite',pointerEvents:'none'}}></div>
+            <div style={{position:'absolute',bottom:'-60px',right:'-60px',width:'240px',height:'240px',borderRadius:'50%',background:'radial-gradient(circle,rgba(124,58,237,0.15) 0%,transparent 70%)',animation:'orbFloat2 10s ease-in-out infinite',pointerEvents:'none'}}></div>
+            <div style={{position:'absolute',top:'40%',left:'55%',width:'180px',height:'180px',borderRadius:'50%',background:'radial-gradient(circle,rgba(79,70,229,0.12) 0%,transparent 70%)',animation:'orbFloat3 7s ease-in-out infinite',pointerEvents:'none'}}></div>
+            {/* Contenido central */}
+            <div style={{textAlign:'center',zIndex:1}}>
+                <div style={{position:'relative',width:'72px',height:'72px',margin:'0 auto 20px'}}>
+                    <svg width="72" height="72" viewBox="0 0 72 72" style={{position:'absolute',top:0,left:0}}>
+                        <circle cx="36" cy="36" r="30" fill="none" stroke="#e0e7ff" strokeWidth="5"/>
+                        <circle cx="36" cy="36" r="30" fill="none" stroke="#4f46e5" strokeWidth="5"
+                            strokeLinecap="round" strokeDasharray="220" strokeDashoffset="220"
+                            transform="rotate(-90 36 36)"
+                            style={{animation:'loaderRing 1.6s ease-in-out infinite'}}/>
+                    </svg>
+                    <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'22px'}}>📅</div>
+                </div>
+                <div style={{display:'flex',gap:'8px',justifyContent:'center',marginBottom:'14px'}}>
+                    <div style={{width:'8px',height:'8px',borderRadius:'50%',background:'#4f46e5',animation:'loaderDot 1.2s ease-in-out 0s infinite'}}></div>
+                    <div style={{width:'8px',height:'8px',borderRadius:'50%',background:'#6366f1',animation:'loaderDot 1.2s ease-in-out 0.2s infinite'}}></div>
+                    <div style={{width:'8px',height:'8px',borderRadius:'50%',background:'#818cf8',animation:'loaderDot 1.2s ease-in-out 0.4s infinite'}}></div>
+                </div>
+                <h2 style={{color:'#312e81',fontWeight:700,margin:'0 0 4px 0',fontSize:'22px'}}>Turno Fácil Pro</h2>
+                <p style={{color:'#6366f1',fontSize:'13px',margin:0,fontWeight:500}}>Verificando sesión...</p>
+            </div>
+        </div>
+    );
 
     class ErrorBoundary extends React.Component {
         constructor(props) { super(props); this.state = { hasError: false, error: null }; }
