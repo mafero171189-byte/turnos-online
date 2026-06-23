@@ -112,7 +112,8 @@
 <body class="bg-brand-50 text-neutral-900 overflow-x-hidden">
 
     <!-- PANTALLA DE CARGA INSTANTÁNEA -->
-    <div id="root">
+    <!-- Contenedor de pantallas de carga PRE-React (separado del root de React) -->
+    <div id="pre-app-screens">
 
         <!-- ① SPLASH ANIMADO (fondo oscuro, logo + nombre) -->
         <div id="splash-screen" style="
@@ -236,7 +237,10 @@
                 }
             }, 1800);
         </script>
-    </div>
+    </div><!-- /pre-app-screens -->
+
+    <!-- Contenedor de React (vacío, separado del splash/loader) -->
+    <div id="root"></div>
 
     <!-- SCRIPTS PESADOS MOVIDOS AL FINAL PARA NO BLOQUEAR LA PÁGINA -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -904,7 +908,12 @@
         useEffect(() => {
             const params = new URLSearchParams(window.location.search);
             const p = params.get('p');
+            // Timeout de seguridad: si Firebase no responde en 8s, mostrar landing
+            const authTimeout = setTimeout(() => {
+                setView(prev => prev === 'loading' ? 'landing' : prev);
+            }, 8000);
             const unsub = auth.onAuthStateChanged(async (u) => {
+                clearTimeout(authTimeout);
                 setUser(u);
                 if (p) { 
                     if (p.length > 20) {
@@ -935,7 +944,7 @@
                     setView('landing'); 
                 }
             });
-            return () => unsub();
+            return () => { unsub(); clearTimeout(authTimeout); };
         }, []);
 
         if (view === 'loading') return <Spinner />;
@@ -3947,6 +3956,14 @@
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<ErrorBoundary><App /></ErrorBoundary>);
+
+    // Ocultar el loader HTML apenas React toma el control
+    const preAppScreens = document.getElementById('pre-app-screens');
+    if (preAppScreens) {
+        preAppScreens.style.transition = 'opacity 0.3s ease';
+        preAppScreens.style.opacity = '0';
+        setTimeout(() => { preAppScreens.style.display = 'none'; }, 350);
+    }
 </script>
 
 <script>
